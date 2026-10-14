@@ -16,17 +16,32 @@ and keep your screenshots in a library. Output is flattened PNG.
 
 ### Linux (Mint / Ubuntu)
 
+Download `screencapture-<version>.tar.gz` from the [Releases](https://github.com/jtylek/ScreenCapture/releases)
+page, then:
+
 ```bash
-sudo apt install python3-venv libxcb-cursor0     # once
-git clone https://github.com/jtylek/ScreenCapture && cd ScreenCapture
-./install.sh --autostart                         # per-user, no root; --autostart = tray icon at login
+# once: system packages
+sudo apt install python3-venv libxcb-cursor0
+
+# extract and install (replace 0.2.0 with the version you downloaded)
+tar xzf screencapture-0.2.0-linux.tar.gz
+cd screencapture-0.2.0
+./install.sh --autostart
 ```
 
-Set your capture hotkey in the app: **Library → Settings** (gear icon). To use **PrintScreen**, first clear
-the system's own screenshot shortcut under *Menu → Keyboard → Shortcuts*; the system holds that key, and
-ScreenCapture will tell you the key is taken. (Alternative that always works: add a custom system shortcut
-with the command `~/.local/bin/screencapture --capture`.)
-Remove with `./uninstall.sh` (`--purge` also deletes the library).
+Or install straight from the repository instead of the tarball:
+`git clone https://github.com/jtylek/ScreenCapture && cd ScreenCapture && ./install.sh --autostart`.
+
+- `install.sh` installs for your user only, no `sudo`. It creates a private Python environment in
+  `~/.local/share/screencapture` (dependencies are downloaded, so you need to be online), a `screencapture`
+  command in `~/.local/bin`, and a "ScreenCapture" menu entry.
+- `--autostart` is optional: it starts the app quietly in the tray at login, which the capture hotkey needs.
+- Start it from the menu or run `screencapture`. If the command is not found right after installing, log out and
+  back in so `~/.local/bin` is on your PATH.
+- Set your capture hotkey in **Library → Settings** (gear icon); see [Settings](#settings) for using PrintScreen.
+  Alternative that always works: add a custom system shortcut with the command `~/.local/bin/screencapture --capture`.
+- **Update:** download the newer tarball and run `./install.sh` again.
+- **Uninstall:** run `./uninstall.sh` from the extracted folder (`--purge` also deletes your saved screenshots).
 
 ### Windows
 
