@@ -21,7 +21,7 @@ if (-not $iscc) {
 if ($iscc) {
     & $iscc "/DAppVersion=$version" packaging\windows.iss
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
-    Write-Host "Installer: dist\ScreenCapture-Setup-$version.exe"
+    Write-Host "Installer: dist\ScreenCapture-Setup.exe"
 } else {
     Write-Warning "Inno Setup not found (winget install JRSoftware.InnoSetup); only the portable folder dist\ScreenCapture was built."
 }

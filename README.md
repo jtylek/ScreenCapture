@@ -27,8 +27,8 @@ Remove with `./uninstall.sh` (`--purge` also deletes the library).
 
 ### Windows
 
-Download `ScreenCapture-Setup-<version>.exe` from the
-[Releases](https://github.com/jtylek/ScreenCapture/releases) page and run it. It installs per user
+**[Download ScreenCapture-Setup.exe](https://github.com/jtylek/ScreenCapture/releases/latest/download/ScreenCapture-Setup.exe)**
+(always the latest release; older versions are on the [Releases](https://github.com/jtylek/ScreenCapture/releases) page) and run it. It installs per user
 (no admin needed) and optionally adds a desktop shortcut and start-at-login. To bind a key: Start menu →
 right-click *Capture region* → Properties → *Shortcut key*.
 
