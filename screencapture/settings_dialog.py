@@ -4,6 +4,7 @@ from __future__ import annotations
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import icons, theme
+from . import autostart, icons, theme
 from .hotkey import DEFAULT, HotkeyManager, parse
 
 
@@ -49,8 +50,13 @@ class SettingsDialog(QDialog):
             lambda _: theme.apply(QApplication.instance(), self.theme_box.currentData())  # live preview
         )
 
+        self.autostart_box = QCheckBox("Start ScreenCapture when I sign in (quietly, in the tray)")
+        self.autostart_box.setEnabled(autostart.supported())
+        self.autostart_box.setChecked(autostart.is_enabled())
+
         form = QFormLayout()
         form.addRow("Theme:", self.theme_box)
+        form.addRow("Startup:", self.autostart_box)
         form.addRow("Capture hotkey:", row)
         hint = QLabel(
             "Starts a region / window capture from anywhere. Click the box and press the keys you want; "
@@ -89,6 +95,10 @@ class SettingsDialog(QDialog):
         err = self.hotkeys.apply(self._text())
         if err:
             return self._show(err, True)
+        if self.autostart_box.isEnabled() and self.autostart_box.isChecked() != autostart.is_enabled():
+            err = autostart.set_enabled(self.autostart_box.isChecked())
+            if err:
+                return self._show(err, True)
         theme.save(self.theme_box.currentData())
         super().accept()
 

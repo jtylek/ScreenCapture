@@ -50,6 +50,9 @@ Pushing a `v*` tag builds the installer and Linux bundle in GitHub Actions and a
 
 ## Settings
 
+**Startup** (Library → Settings): start ScreenCapture quietly in the tray when you sign in to Windows / Linux, so
+the capture hotkey is always ready.
+
 **Theme**: follow the system, light or dark (Library → Settings). The sun/moon button in the Library toolbar
 switches between light and dark in one click.
 

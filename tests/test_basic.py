@@ -155,3 +155,52 @@ def test_theme_switch_redraws_icons_and_persists(qapp, tmp_path, monkeypatch):
     assert theme.saved() == "light" and not theme.is_dark(qapp)
     theme.save("system")
     theme.apply(qapp, "system")
+
+
+def test_autostart_linux_desktop_file(qapp, tmp_path, monkeypatch):
+    from screencapture import autostart
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(autostart, "_platform", lambda: "linux")
+    assert not autostart.is_enabled()
+    assert autostart.set_enabled(True) is None and autostart.is_enabled()
+    text = (tmp_path / "autostart" / "screencapture.desktop").read_text()
+    assert "Exec=" in text and text.split("Exec=")[1].splitlines()[0].endswith("--tray")
+    assert autostart.set_enabled(False) is None and not autostart.is_enabled()
+    (tmp_path / "autostart").mkdir(exist_ok=True)
+    (tmp_path / "autostart" / "screencapture.desktop").write_text("[Desktop Entry]\nHidden=true\n")
+    assert not autostart.is_enabled()  # a disabled entry counts as off
+
+
+def test_autostart_windows_registry(qapp, monkeypatch):
+    import sys
+    import types
+
+    from screencapture import autostart
+
+    store = {}
+
+    class Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    fake = types.SimpleNamespace(
+        HKEY_CURRENT_USER=1, KEY_QUERY_VALUE=1, KEY_SET_VALUE=2, REG_SZ=1,
+        OpenKey=lambda root, sub, res, acc: Key(),
+        SetValueEx=lambda k, n, r, t, v: store.__setitem__(n, v),
+        QueryValueEx=lambda k, n: (store[n], 1) if n in store else (_ for _ in ()).throw(FileNotFoundError()),
+        DeleteValue=lambda k, n: store.pop(n) if n in store else (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake)
+    monkeypatch.setattr(autostart, "_platform", lambda: "win32")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\Program Files\ScreenCapture\ScreenCapture.exe")
+    assert not autostart.is_enabled()
+    assert autostart.set_enabled(True) is None
+    assert store["ScreenCapture"] == r'"C:\Program Files\ScreenCapture\ScreenCapture.exe" --tray'
+    assert autostart.is_enabled()
+    assert autostart.set_enabled(False) is None and not autostart.is_enabled()
+    assert autostart.set_enabled(False) is None  # already off: no error

@@ -35,7 +35,10 @@ Name: "{group}\ScreenCapture"; Filename: "{app}\ScreenCapture.exe"; Parameters: 
 Name: "{group}\Capture region"; Filename: "{app}\ScreenCapture.exe"; Parameters: "--capture"
 Name: "{group}\Uninstall ScreenCapture"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\ScreenCapture"; Filename: "{app}\ScreenCapture.exe"; Parameters: "--library"; Tasks: desktopicon
-Name: "{userstartup}\ScreenCapture"; Filename: "{app}\ScreenCapture.exe"; Parameters: "--tray"; Tasks: autostart
+
+[Registry]
+; same value the in-app Settings checkbox manages
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "ScreenCapture"; ValueData: """{app}\ScreenCapture.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 Filename: "{app}\ScreenCapture.exe"; Parameters: "--library"; Description: "Launch ScreenCapture"; Flags: nowait postinstall skipifsilent
