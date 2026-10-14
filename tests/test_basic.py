@@ -128,3 +128,30 @@ def test_cut_horizontal_strip_via_canvas(qapp, tmp_path):
     ed.scene.addItem(ed.canvas._crop)
     ed.canvas.apply_crop()
     assert ed.image().size().toTuple() == (60, 80)
+
+
+def test_theme_switch_redraws_icons_and_persists(qapp, tmp_path, monkeypatch):
+    from PySide6.QtGui import QAction, QPalette
+
+    from screencapture import icons, theme
+
+    theme.init(qapp)
+    a = icons.tag(QAction("x"), "rect")
+    w = __import__("PySide6.QtWidgets", fromlist=["QWidget"]).QWidget()
+    w.addAction(a)
+
+    def ink():  # brightest opaque pixel of the icon
+        img = a.icon().pixmap(48, 48).toImage()
+        return max(img.pixelColor(x, y).lightness() for x in range(48) for y in range(48) if img.pixelColor(x, y).alpha() > 200)
+
+    theme.apply(qapp, "dark")
+    assert theme.is_dark(qapp) and ink() > 180
+    theme.apply(qapp, "light")
+    assert not theme.is_dark(qapp) and ink() < 80
+    theme.save("dark")
+    theme.apply(qapp, "dark")
+    assert theme.saved() == "dark"
+    theme.toggle(qapp)  # dark -> light, remembered
+    assert theme.saved() == "light" and not theme.is_dark(qapp)
+    theme.save("system")
+    theme.apply(qapp, "system")

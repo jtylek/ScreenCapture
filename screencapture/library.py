@@ -6,10 +6,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import icons
+from . import icons, theme
 from PySide6.QtCore import QObject, QSize, Qt, QStandardPaths, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QImage, QKeySequence, QPixmap
-from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy, QToolBar, QWidget
+from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QApplication, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy, QToolBar, QWidget
 
 MAX_ITEMS = 500
 THUMB = QSize(220, 150)
@@ -110,26 +110,40 @@ class LibraryWindow(QMainWindow):
         self.addToolBar(tb)
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         tb.setIconSize(QSize(22, 22))
-        self._capture_action = tb.addAction(icons.icon("capture"), "Capture region", self.captureRequested.emit)
-        tb.addAction(icons.icon("screen"), "Capture screen", self.fullscreenRequested.emit)
+        self._capture_action = icons.tag(tb.addAction("Capture region", self.captureRequested.emit), "capture")
+        icons.tag(tb.addAction("Capture screen", self.fullscreenRequested.emit), "screen")
         tb.addSeparator()
-        tb.addAction(icons.icon("edit"), "Open in editor", self._open_selected)
-        tb.addAction(icons.icon("copy"), "Copy", self._copy_selected)
-        tb.addAction(icons.icon("trash"), "Delete", self._delete_selected).setShortcut(QKeySequence.Delete)
-        tb.addAction(
-            icons.icon("folder"), "Open folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.library.root)))
+        icons.tag(tb.addAction("Open in editor", self._open_selected), "edit")
+        icons.tag(tb.addAction("Copy", self._copy_selected), "copy")
+        icons.tag(tb.addAction("Delete", self._delete_selected), "trash").setShortcut(QKeySequence.Delete)
+        icons.tag(
+            tb.addAction("Open folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.library.root)))),
+            "folder",
         )
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         tb.addWidget(spacer)
-        tb.addAction(icons.icon("settings"), "Settings", self.settingsRequested.emit)
+        self._theme_action = tb.addAction("Dark mode", self._toggle_theme)
+        theme.notifier.changed.connect(self._sync_theme_action)
+        self._sync_theme_action()
+        icons.tag(tb.addAction("Settings", self.settingsRequested.emit), "settings")
 
         self.setWindowIcon(icons.app_icon())
         self.hotkey_label = QLabel()
         self.statusBar().addPermanentWidget(self.hotkey_label)
         self.library.changed.connect(self.refresh)
         self.refresh()
+
+    def _toggle_theme(self):
+        theme.toggle(QApplication.instance())
+
+    def _sync_theme_action(self):
+        # shows what a click will switch to
+        dark = theme.is_dark()
+        icons.tag(self._theme_action, "sun" if dark else "moon")
+        self._theme_action.setText("Light mode" if dark else "Dark mode")
+        self._theme_action.setToolTip("Switch to light mode" if dark else "Switch to dark mode")
 
     def set_hotkey(self, text: str):
         if text:
@@ -172,7 +186,7 @@ class LibraryWindow(QMainWindow):
         if not self.list.itemAt(pos):
             return
         m = QMenu(self)
-        m.addAction(icons.icon("edit"), "Open in editor", self._open_selected)
-        m.addAction(icons.icon("copy"), "Copy to clipboard", self._copy_selected)
-        m.addAction(icons.icon("trash"), "Delete", self._delete_selected)
+        icons.tag(m.addAction("Open in editor", self._open_selected), "edit")
+        icons.tag(m.addAction("Copy to clipboard", self._copy_selected), "copy")
+        icons.tag(m.addAction("Delete", self._delete_selected), "trash")
         m.exec(self.list.viewport().mapToGlobal(pos))

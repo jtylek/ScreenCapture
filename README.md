@@ -46,6 +46,9 @@ Pushing a `v*` tag builds the installer and Linux bundle in GitHub Actions and a
 
 ## Settings
 
+**Theme**: follow the system, light or dark (Library → Settings). The sun/moon button in the Library toolbar
+switches between light and dark in one click.
+
 **Capture hotkey** (Library → Settings): a global shortcut that starts a region / window capture from any
 application. Default `Ctrl+Shift+Print`. Works on Windows and Linux/X11 (not Wayland). `Ctrl+Alt+letter` is
 refused because it is AltGr on many keyboards. Clear the box to turn the hotkey off.

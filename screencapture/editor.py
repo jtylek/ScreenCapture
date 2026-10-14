@@ -507,7 +507,7 @@ class EditorWindow(QMainWindow):
         self.addToolBar(tb)
         group = QActionGroup(self)
         for key, label, hint in TOOLS:
-            a = QAction(icons.icon(key), label, self, checkable=True)
+            a = icons.tag(QAction(label, self, checkable=True), key)
             a.setToolTip(label)
             a.triggered.connect(lambda _=False, k=key, h=hint: self._choose_tool(k, h))
             group.addAction(a)
@@ -535,10 +535,10 @@ class EditorWindow(QMainWindow):
         self.canvas.cropActive.connect(self.apply_crop_action.setEnabled)
         undo = self.stack.createUndoAction(self, "Undo")
         undo.setShortcut(QKeySequence.Undo)
-        undo.setIcon(icons.icon("undo"))
+        icons.tag(undo, "undo")
         redo = self.stack.createRedoAction(self, "Redo")
         redo.setShortcut(QKeySequence.Redo)
-        redo.setIcon(icons.icon("redo"))
+        icons.tag(redo, "redo")
         tb.addAction(undo)
         tb.addAction(redo)
         tb.addSeparator()
@@ -551,7 +551,7 @@ class EditorWindow(QMainWindow):
         self.statusBar().showMessage(hint)
 
     def _act(self, tb, icon_name, tip, shortcut, slot):
-        a = QAction(icons.icon(icon_name), tip, self)
+        a = icons.tag(QAction(tip, self), icon_name)
         a.setToolTip(tip)
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))

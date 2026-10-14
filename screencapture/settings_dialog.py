@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -13,7 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import icons
+from . import icons, theme
 from .hotkey import DEFAULT, HotkeyManager, parse
 
 
@@ -38,7 +40,17 @@ class SettingsDialog(QDialog):
         row.addWidget(clear)
         row.addWidget(default)
 
+        self._theme0 = theme.saved()
+        self.theme_box = QComboBox()
+        for key, label in (("system", "Follow system"), ("light", "Light"), ("dark", "Dark")):
+            self.theme_box.addItem(label, key)
+        self.theme_box.setCurrentIndex(self.theme_box.findData(self._theme0))
+        self.theme_box.currentIndexChanged.connect(
+            lambda _: theme.apply(QApplication.instance(), self.theme_box.currentData())  # live preview
+        )
+
         form = QFormLayout()
+        form.addRow("Theme:", self.theme_box)
         form.addRow("Capture hotkey:", row)
         hint = QLabel(
             "Starts a region / window capture from anywhere. Click the box and press the keys you want; "
@@ -77,4 +89,9 @@ class SettingsDialog(QDialog):
         err = self.hotkeys.apply(self._text())
         if err:
             return self._show(err, True)
+        theme.save(self.theme_box.currentData())
         super().accept()
+
+    def reject(self):
+        theme.apply(QApplication.instance(), self._theme0)  # undo the preview
+        super().reject()

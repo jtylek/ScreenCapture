@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPen
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from . import icons
+from . import icons, theme
 from .capture import CaptureOverlay, grab_current_screen, grab_desktop
 from .editor import EditorWindow
 from .hotkey import HotkeyManager
@@ -90,12 +90,12 @@ class ScreenCapture(QObject):
         t = QSystemTrayIcon(make_icon(), self)
         t.setToolTip("ScreenCapture")
         m = QMenu()
-        m.addAction(icons.icon("capture"), "Capture region / window", self.capture_region)
-        m.addAction(icons.icon("screen"), "Capture full screen", lambda: self.capture_fullscreen(0))
-        m.addAction(icons.icon("screen"), "Capture full screen in 3 s", lambda: self.capture_fullscreen(3000))
+        icons.tag(m.addAction("Capture region / window", self.capture_region), "capture")
+        icons.tag(m.addAction("Capture full screen", lambda: self.capture_fullscreen(0)), "screen")
+        icons.tag(m.addAction("Capture full screen in 3 s", lambda: self.capture_fullscreen(3000)), "screen")
         m.addSeparator()
-        m.addAction(icons.icon("folder"), "Library", self.show_library)
-        m.addAction(icons.icon("settings"), "Settings…", self.open_settings)
+        icons.tag(m.addAction("Library", self.show_library), "folder")
+        icons.tag(m.addAction("Settings…", self.open_settings), "settings")
         m.addSeparator()
         m.addAction("Quit", QApplication.quit)
         t.setContextMenu(m)
@@ -189,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("ScreenCapture")
     app.setOrganizationName("ScreenCapture")
     app.setWindowIcon(make_icon())
+    theme.init(app)
+    theme.apply(app, theme.saved())
     cmd = next((c for c in COMMANDS if getattr(args, c)), None)
 
     if _send_to_running(cmd or "library"):

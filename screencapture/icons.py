@@ -187,12 +187,32 @@ def _settings(p, fg, bg):  # gear
         _line(p, 12 + 7.6 * math.cos(a), 12 + 7.6 * math.sin(a), 12 + 9.6 * math.cos(a), 12 + 9.6 * math.sin(a))
 
 
+def _sun(p, fg, bg):
+    import math
+
+    p.drawEllipse(QPointF(12, 12), 4.2, 4.2)
+    for i in range(8):
+        a = i * math.pi / 4
+        _line(p, 12 + 7 * math.cos(a), 12 + 7 * math.sin(a), 12 + 9.6 * math.cos(a), 12 + 9.6 * math.sin(a))
+
+
+def _moon(p, fg, bg):
+    from PySide6.QtGui import QPainterPath
+
+    outer = QPainterPath()
+    outer.addEllipse(QRectF(4, 4, 16, 16))
+    bite = QPainterPath()
+    bite.addEllipse(QRectF(9.5, 1.5, 14, 14))
+    p.setBrush(fg)
+    p.drawPath(outer.subtracted(bite))
+
+
 _DRAW = {
     "select": _select, "rect": _rect, "ellipse": _ellipse, "arrow": _arrow, "line": _linetool,
     "text": _text, "highlight": _highlight, "pixelate": _pixelate, "step": _step,
     "crop": _crop, "cutv": _cutv, "cuth": _cuth, "apply": _apply, "undo": _undo, "redo": _redo,
     "copy": _copy, "save": _save, "saveas": _saveas, "capture": _capture, "screen": _screen,
-    "edit": _edit, "settings": _settings, "folder": _folder, "trash": _trash,
+    "edit": _edit, "settings": _settings, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
 }
 NAMES = tuple(_DRAW)
 _SIZE = 96  # drawn large, scaled down smoothly by Qt for any toolbar size / DPI
@@ -229,3 +249,25 @@ def app_icon() -> QIcon:
         p.drawLine(x, y, x, y + 12 * dy)
     p.end()
     return QIcon(pm)
+
+
+def tag(action, name: str):
+    """Give a QAction its icon and remember the name, so refresh() can redraw it after a theme change."""
+    action.setProperty("icon_name", name)
+    action.setIcon(icon(name))
+    return action
+
+
+def refresh():
+    """Redraw every tagged action's icon with the current palette."""
+    from PySide6.QtWidgets import QApplication
+
+    seen = set()
+    for w in QApplication.allWidgets():
+        for a in w.actions():
+            if id(a) in seen:
+                continue
+            seen.add(id(a))
+            name = a.property("icon_name")
+            if name:
+                a.setIcon(icon(str(name)))
