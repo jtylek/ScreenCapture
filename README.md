@@ -1,7 +1,7 @@
 # ScreenCapture
 
-A small Snagit-style tool: capture a region or a window, annotate it, crop it, and keep a library of
-recent captures. Runs on Linux (X11) and Windows. Output is flattened PNG.
+A simple screen capture tool for Windows and Linux. Capture a region or a window, add annotations, crop,
+and keep your screenshots in a library. Output is flattened PNG.
 
 - **Capture** – drag a region, or click a window (it is highlighted as you hover); full-screen capture
   with optional 3 s delay from the tray menu. `Esc` / right click cancels.
