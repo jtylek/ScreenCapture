@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
 from screencapture.editor import AddCommand, CropCommand, EditorWindow
-from screencapture.items import ArrowItem, BoxItem, PixelateItem
+from screencapture.items import MOVABLE, ArrowItem, BoxItem, PixelateItem
 from screencapture.library import Library
 
 
@@ -204,3 +204,79 @@ def test_autostart_windows_registry(qapp, monkeypatch):
     assert autostart.is_enabled()
     assert autostart.set_enabled(False) is None and not autostart.is_enabled()
     assert autostart.set_enabled(False) is None  # already off: no error
+
+
+def test_select_and_delete_objects(qapp, tmp_path):
+    from PySide6.QtCore import QPoint
+
+    ed = EditorWindow(_img(400, 300), Library(tmp_path))
+    ed.show()
+    items = [BoxItem(QRectF(10 + 60 * i, 10, 40, 40)) for i in range(3)]
+    for it in items:
+        it.setPen(ed.canvas.pen())
+        it.setFlags(it.flags() | MOVABLE)
+        ed.stack.push(AddCommand(ed.scene, it))
+    assert not ed.delete_action.isEnabled()
+    items[0].setSelected(True)
+    items[2].setSelected(True)
+    assert ed.delete_action.isEnabled()
+    ed.delete_action.trigger()  # toolbar button
+    assert [i.scene() is ed.scene for i in items] == [False, True, False]
+    ed.stack.undo()
+    assert all(i.scene() is ed.scene for i in items)
+    ed.canvas.select_all()
+    assert len(ed.canvas.selected_annotations()) == 3
+    menu = ed.canvas.context_menu(QPoint(5, 5))
+    assert [a.text() for a in menu.actions() if not a.isSeparator()] == ["Delete", "Select all", "Delete all annotations"]
+    ed.canvas.delete_all()
+    assert not ed.scene.annotations() and not ed.delete_action.isEnabled()
+    ed.stack.undo()
+    assert len(ed.scene.annotations()) == 3
+
+
+def test_diagnostics_log(qapp, tmp_path):
+    import sys
+    import threading
+
+    from screencapture import diagnostics
+
+    path = diagnostics.install(tmp_path / "sc.log")
+    try:
+        t = threading.Thread(target=lambda: 1 / 0, name="boom")
+        t.start()
+        t.join()
+        text = path.read_text()
+        assert "PySide6" in text and "ZeroDivisionError" in text and "boom" in text
+    finally:
+        sys.excepthook, threading.excepthook = sys.__excepthook__, threading.__excepthook__
+
+
+def test_closing_editor_with_selection_raises_nothing(qapp, tmp_path):
+    """Qt emits selectionChanged / sceneRectChanged while the window is being destroyed; nothing may blow up."""
+    import gc
+    import sys
+
+    errors = []
+    old = sys.excepthook
+    sys.excepthook = lambda k, v, tb: errors.append(repr(v))
+    try:
+        for _ in range(5):
+            ed = EditorWindow(_img(300, 200), Library(tmp_path))
+            ed.show()
+            box = BoxItem(QRectF(10, 10, 40, 40))
+            box.setPen(ed.canvas.pen())
+            box.setFlags(box.flags() | MOVABLE)
+            ed.stack.push(AddCommand(ed.scene, box))
+            box.setSelected(True)
+            ed.stack.clear()  # leave the item alive only inside the scene
+            ed.close()
+            ed.deleteLater()
+            del ed, box
+            gc.collect()
+            QApplication.sendPostedEvents(None, 0)
+            QApplication.processEvents()
+        gc.collect()
+        QApplication.processEvents()
+    finally:
+        sys.excepthook = old
+    assert errors == []

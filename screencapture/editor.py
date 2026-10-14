@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSpinBox,
     QToolBar,
@@ -47,7 +48,7 @@ from .library import Library
 
 # key, tooltip, status-bar hint
 TOOLS = [
-    ("select", "Select", "Click to select, drag to move, Delete removes. Double-click text to edit."),
+    ("select", "Select", "Click an item to select it (Ctrl+click adds), drag on empty space to select several. Delete removes, right-click for more."),
     ("rect", "Rectangle", "Drag to draw a rectangle."),
     ("ellipse", "Ellipse", "Drag to draw an ellipse."),
     ("arrow", "Arrow", "Drag from the tail to the point."),
@@ -215,6 +216,7 @@ class Canvas(QGraphicsView):
         self.setBackgroundBrush(QColor(45, 45, 48))
         self.setAlignment(Qt.AlignCenter)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setDragMode(QGraphicsView.RubberBandDrag)  # select tool: drag on empty space selects several
 
     # state ---------------------------------------------------------------------------------
 
@@ -222,10 +224,50 @@ class Canvas(QGraphicsView):
         self.tool = tool
         self.discard_crop()
         self.viewport().setCursor(Qt.ArrowCursor if tool == "select" else Qt.CrossCursor)
+        self.setDragMode(QGraphicsView.RubberBandDrag if tool == "select" else QGraphicsView.NoDrag)
 
     def editing_text(self) -> bool:
         f = self.scene().focusItem()
         return isinstance(f, TextItem) and f.textInteractionFlags() != Qt.NoTextInteraction
+
+    def selected_annotations(self):
+        sc = self.scene()
+        base = getattr(sc, "base_item", None)  # a scene that is being destroyed has lost its Python attributes
+        return [i for i in sc.selectedItems() if i is not base and not isinstance(i, CropItem)]
+
+    def delete_selected(self):
+        sel = self.selected_annotations()
+        if sel:
+            self.stack.push(DeleteCommand(self.scene(), sel))
+
+    def select_all(self):
+        for i in self.scene().annotations():
+            i.setSelected(True)
+
+    def delete_all(self):
+        items = self.scene().annotations()
+        if items:
+            self.stack.push(DeleteCommand(self.scene(), items))
+
+    def context_menu(self, view_pos) -> QMenu:
+        """Right-click menu (built separately from exec() so it can be tested)."""
+        item = self.itemAt(view_pos)
+        if item is not None and item is not self.scene().base_item and not item.isSelected():
+            self.scene().clearSelection()
+            item.setSelected(True)
+        has_sel = bool(self.selected_annotations())
+        has_any = bool(self.scene().annotations())
+        m = QMenu(self)
+        a = icons.tag(m.addAction("Delete", self.delete_selected), "trash")
+        a.setEnabled(has_sel)
+        m.addAction("Select all", self.select_all).setEnabled(has_any)
+        m.addSeparator()
+        m.addAction("Delete all annotations", self.delete_all).setEnabled(has_any)
+        return m
+
+    def contextMenuEvent(self, e):
+        if self._item is None and not self._crop_drag:
+            self.context_menu(e.pos()).exec(e.globalPos())
 
     def pen(self) -> QPen:
         return QPen(self.color, self.width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -438,10 +480,9 @@ class Canvas(QGraphicsView):
                 super().keyPressEvent(e)
             return
         if e.key() in (Qt.Key_Delete, Qt.Key_Backspace):
-            sel = [i for i in self.scene().selectedItems() if i is not self.scene().base_item]
-            if sel:
-                self.stack.push(DeleteCommand(self.scene(), sel))
-            return
+            return self.delete_selected()
+        if e.matches(QKeySequence.SelectAll):
+            return self.select_all()
         if e.key() in (Qt.Key_Return, Qt.Key_Enter) and self._crop:
             return self.apply_crop()
         if e.key() == Qt.Key_Escape:
@@ -541,10 +582,19 @@ class EditorWindow(QMainWindow):
         icons.tag(redo, "redo")
         tb.addAction(undo)
         tb.addAction(redo)
+        self.delete_action = self._act(tb, "trash", "Delete selected (Delete)", None, self.canvas.delete_selected)
+        self.delete_action.setEnabled(False)
+        self.scene.selectionChanged.connect(self._sync_delete_action)
         tb.addSeparator()
         self._act(tb, "copy", "Copy image to clipboard (Ctrl+Shift+C)", "Ctrl+Shift+C", self.copy_to_clipboard)
         self._act(tb, "save", "Save to library (Ctrl+S)", QKeySequence.Save, self.save)
         self._act(tb, "saveas", "Save as… (Ctrl+Shift+S)", QKeySequence.SaveAs, self.save_as)
+
+    def _sync_delete_action(self):
+        try:
+            self.delete_action.setEnabled(bool(self.canvas.selected_annotations()))
+        except (RuntimeError, AttributeError):  # window is being torn down
+            pass
 
     def _choose_tool(self, key: str, hint: str):
         self.canvas.set_tool(key)
@@ -594,6 +644,12 @@ class EditorWindow(QMainWindow):
     # window plumbing -----------------------------------------------------------------------
 
     def _fit(self):
+        try:
+            self._fit_now()
+        except RuntimeError:  # queued call that ran after the window was deleted
+            pass
+
+    def _fit_now(self):
         r = self.scene.sceneRect()
         vp = self.canvas.viewport().size()
         if r.width() > vp.width() or r.height() > vp.height():
@@ -602,8 +658,11 @@ class EditorWindow(QMainWindow):
             self.canvas.resetTransform()
 
     def _update_size(self, *_):
-        r = self.scene.sceneRect()
-        self.size_label.setText(f"{int(r.width())} × {int(r.height())}")
+        try:
+            r = self.scene.sceneRect()
+            self.size_label.setText(f"{int(r.width())} × {int(r.height())}")
+        except RuntimeError:
+            pass
 
     def _update_title(self):
         try:
@@ -625,5 +684,10 @@ class EditorWindow(QMainWindow):
                 return e.ignore()
             if b == QMessageBox.Save:
                 self.save()
+        for sig, slot in ((self.scene.selectionChanged, self._sync_delete_action),):
+            try:
+                sig.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
         self.closed.emit(self)
         e.accept()

@@ -9,9 +9,9 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPen, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from . import icons, theme
+from . import diagnostics, icons, theme
 from .capture import CaptureOverlay, grab_current_screen, grab_desktop
 from .editor import EditorWindow
 from .hotkey import HotkeyManager
@@ -186,6 +186,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     app = QApplication(sys.argv[:1])
+    diagnostics.install()
+    problem = diagnostics.check_runtime()
+    if problem:
+        print(problem, file=sys.stderr)
+        QMessageBox.critical(None, "ScreenCapture", problem)
+        return 1
     app.setApplicationName("ScreenCapture")
     app.setOrganizationName("ScreenCapture")
     app.setWindowIcon(make_icon())

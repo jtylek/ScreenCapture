@@ -46,6 +46,12 @@ The release asset names are fixed on purpose: the README links to `releases/late
 - Global hotkeys: X11 and Windows only (no Wayland). Reject `Ctrl+Alt+<letter>` (AltGr on Polish / German
   keyboards). On Linux Mint PrintScreen is owned by the system and must be freed first; on Windows by the
   Snipping Tool.
+- PySide6 6.12.0 leaks references to `None` on Python < 3.12 (every void call, e.g. `QPainter.setPen`) and aborts with
+  `Fatal Python error: none_dealloc` after some painting. Python 3.12+ has immortal `None`, so dev machines on 3.12/3.13 and
+  the Windows build never show it, but Linux Mint 21 / Ubuntu 22.04 (Python 3.10) do. `pyproject.toml` pins
+  `PySide6-Essentials<6.12` for Python < 3.12, `diagnostics.check_runtime()` detects it at startup, and CI tests on 3.10.
+  Reproduce with `uv python install 3.10` + a 3.10 venv. Raising the pin needs `tests/test_runtime.py` green on 3.10.
+- A crash log is written to `~/.local/share/ScreenCapture/ScreenCapture/screencapture.log` (faulthandler + Qt warnings).
 - A busy X server can drop a brand-new connection: X11 code retries.
 - UI strings are plain English; there is no translation system.
 - Keep dependencies minimal (`PySide6-Essentials`, `python-xlib` on Linux only).

@@ -11,3 +11,16 @@ def isolated_user_state(tmp_path, monkeypatch):
     QSettings.setDefaultFormat(QSettings.IniFormat)
     QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(tmp_path / "qsettings"))
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_exceptions_in_qt_callbacks():
+    """PySide prints exceptions from slots / event handlers and carries on, so pytest alone would not notice."""
+    import sys
+
+    seen = []
+    old = sys.excepthook
+    sys.excepthook = lambda kind, value, tb: seen.append(f"{kind.__name__}: {value}")
+    yield
+    sys.excepthook = old
+    assert not seen, f"exception inside a Qt callback: {seen}"
