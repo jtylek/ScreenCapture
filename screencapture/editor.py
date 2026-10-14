@@ -42,20 +42,25 @@ from .items import (
     StepItem,
     TextItem,
 )
+from . import icons
 from .library import Library
 
+# key, tooltip, status-bar hint
 TOOLS = [
-    ("select", "Select"),
-    ("rect", "Rectangle"),
-    ("ellipse", "Ellipse"),
-    ("arrow", "Arrow"),
-    ("line", "Line"),
-    ("text", "Text"),
-    ("highlight", "Highlight"),
-    ("pixelate", "Blur"),
-    ("step", "Step"),
-    ("crop", "Crop"),
+    ("select", "Select", "Click to select, drag to move, Delete removes. Double-click text to edit."),
+    ("rect", "Rectangle", "Drag to draw a rectangle."),
+    ("ellipse", "Ellipse", "Drag to draw an ellipse."),
+    ("arrow", "Arrow", "Drag from the tail to the point."),
+    ("line", "Line", "Drag to draw a line."),
+    ("text", "Text", "Click and type. Click elsewhere to finish."),
+    ("highlight", "Highlight", "Drag to highlight an area."),
+    ("pixelate", "Blur (pixelate)", "Drag over what you want to hide."),
+    ("step", "Step number", "Click to place the next numbered step."),
+    ("crop", "Crop", "Drag the area to keep; adjust its edges, then press Enter."),
+    ("cutv", "Cut out a vertical strip", "Drag across the part to remove (joins the left and right sides), then press Enter."),
+    ("cuth", "Cut out a horizontal strip", "Drag across the part to remove (joins the top and bottom), then press Enter."),
 ]
+TOOL_GROUPS_END = {"select", "step"}  # toolbar separator after these
 
 
 class CanvasScene(QGraphicsScene):
@@ -140,6 +145,55 @@ class CropCommand(QUndoCommand):
             i.moveBy(self.rect.x(), self.rect.y())
 
 
+class CutCommand(QUndoCommand):
+    """Removes a vertical (x range) or horizontal (y range) strip and joins the two remaining parts.
+
+    Annotations whose centre lies inside the strip are removed; those beyond it move up/left."""
+
+    def __init__(self, scene: CanvasScene, vertical: bool, a: int, b: int):
+        super().__init__("Cut out")
+        self.scene, self.vertical, self.a, self.b = scene, vertical, a, b
+        self.old_pixmap = None
+        self.removed, self.shifted = [], []
+
+    def redo(self):
+        pm = self.scene.base_item.pixmap()
+        self.old_pixmap = pm
+        w, h, a, b = pm.width(), pm.height(), self.a, self.b
+        d = b - a
+        if self.vertical:
+            new = QPixmap(w - d, h)
+            parts = [(pm.copy(0, 0, a, h), 0, 0), (pm.copy(b, 0, w - b, h), a, 0)]
+        else:
+            new = QPixmap(w, h - d)
+            parts = [(pm.copy(0, 0, w, a), 0, 0), (pm.copy(0, b, w, h - b), 0, a)]
+        new.fill(Qt.white)
+        p = QPainter(new)
+        for part, x, y in parts:
+            p.drawPixmap(x, y, part)
+        p.end()
+        self.removed, self.shifted = [], []
+        for it in self.scene.annotations():
+            c = it.sceneBoundingRect().center()
+            v = c.x() if self.vertical else c.y()
+            if a <= v < b:
+                self.removed.append(it)
+                self.scene.removeItem(it)
+            elif v >= b:
+                it.moveBy(-d if self.vertical else 0, 0 if self.vertical else -d)
+                self.shifted.append(it)
+        self.scene.set_base(new)
+
+    def undo(self):
+        d = self.b - self.a
+        self.scene.set_base(self.old_pixmap)
+        for it in self.shifted:
+            it.moveBy(d if self.vertical else 0, 0 if self.vertical else d)
+        for it in self.removed:
+            self.scene.addItem(it)
+        self.removed, self.shifted = [], []
+
+
 # -- canvas ----------------------------------------------------------------------------------
 
 
@@ -166,8 +220,7 @@ class Canvas(QGraphicsView):
 
     def set_tool(self, tool: str):
         self.tool = tool
-        if tool != "crop":
-            self.discard_crop()
+        self.discard_crop()
         self.viewport().setCursor(Qt.ArrowCursor if tool == "select" else Qt.CrossCursor)
 
     def editing_text(self) -> bool:
@@ -204,15 +257,28 @@ class Canvas(QGraphicsView):
     def apply_crop(self):
         if not self._crop:
             return
+        mode = self._crop.mode
         r = self._crop.rect().intersected(self.scene().sceneRect()).toRect()
         self.discard_crop()
-        if r.width() >= 2 and r.height() >= 2:
-            self.stack.push(CropCommand(self.scene(), r))
+        if mode == "crop":
+            if r.width() >= 2 and r.height() >= 2:
+                self.stack.push(CropCommand(self.scene(), r))
+            return
+        vertical = mode == "cutv"
+        size = int(self.scene().sceneRect().width() if vertical else self.scene().sceneRect().height())
+        a, b = (r.left(), r.right() + 1) if vertical else (r.top(), r.bottom() + 1)
+        a, b = max(a, 0), min(b, size)
+        if b - a >= 1 and b - a < size:  # never cut away the whole image
+            self.stack.push(CutCommand(self.scene(), vertical, a, b))
 
     def _crop_hit(self, p: QPointF):
         r = self._crop.rect()
         m = 8 / max(self.transform().m11(), 0.01)
         near = (abs(p.x() - r.left()) < m, abs(p.x() - r.right()) < m, abs(p.y() - r.top()) < m, abs(p.y() - r.bottom()) < m)
+        if self._crop.mode == "cutv":
+            near = (near[0], near[1], False, False)
+        elif self._crop.mode == "cuth":
+            near = (False, False, near[2], near[3])
         inside = r.adjusted(-m, -m, m, m).contains(p)
         if inside and any(near):
             return ("edge", *near)
@@ -241,7 +307,12 @@ class Canvas(QGraphicsView):
                 r.setTop(p.y())
             if b:
                 r.setBottom(p.y())
-        self._crop.set_rect(r.normalized().intersected(bounds))
+        r = r.normalized().intersected(bounds)
+        if self._crop.mode == "cutv":
+            r = QRectF(r.left(), bounds.top(), r.width(), bounds.height())
+        elif self._crop.mode == "cuth":
+            r = QRectF(bounds.left(), r.top(), bounds.width(), r.height())
+        self._crop.set_rect(r)
 
     # items ---------------------------------------------------------------------------------
 
@@ -305,11 +376,11 @@ class Canvas(QGraphicsView):
             self._moving = {i: i.pos() for i in self.scene().selectedItems()}
             return
         self.scene().setFocusItem(None)
-        if self.tool == "crop":
+        if self.tool in ("crop", "cutv", "cuth"):
             hit = self._crop_hit(p) if self._crop else None
             if hit is None:
                 self.discard_crop()
-                self._crop = CropItem(QRectF(p, p))
+                self._crop = CropItem(QRectF(p, p), self.tool)
                 self.scene().addItem(self._crop)
                 hit = ("new",)
             self._crop_drag = (hit, p, self._crop.rect())
@@ -391,8 +462,14 @@ class Canvas(QGraphicsView):
 
 
 def _swatch(color: QColor) -> QIcon:
-    pm = QPixmap(16, 16)
-    pm.fill(color)
+    pm = QPixmap(48, 48)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(QPen(QColor(128, 128, 128), 2))
+    p.setBrush(color)
+    p.drawRoundedRect(5, 5, 38, 38, 8, 8)
+    p.end()
     return QIcon(pm)
 
 
@@ -411,6 +488,7 @@ class EditorWindow(QMainWindow):
         self.size_label = QLabel()
         self.statusBar().addPermanentWidget(self.size_label)
         self.scene.sceneRectChanged.connect(self._update_size)
+        self.scene.sceneRectChanged.connect(lambda *_: QTimer.singleShot(0, self._fit))
         self.stack.cleanChanged.connect(lambda _: self._update_title())
         self._update_size()
         self._update_title()
@@ -424,45 +502,57 @@ class EditorWindow(QMainWindow):
     def _build_toolbar(self):
         tb = QToolBar("Tools", self)
         tb.setMovable(False)
-        tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        tb.setIconSize(QSize(16, 16))
+        tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        tb.setIconSize(QSize(24, 24))
         self.addToolBar(tb)
         group = QActionGroup(self)
-        for key, label in TOOLS:
-            a = QAction(label, self, checkable=True)
-            a.triggered.connect(lambda _=False, k=key: self.canvas.set_tool(k))
+        for key, label, hint in TOOLS:
+            a = QAction(icons.icon(key), label, self, checkable=True)
+            a.setToolTip(label)
+            a.triggered.connect(lambda _=False, k=key, h=hint: self._choose_tool(k, h))
             group.addAction(a)
             tb.addAction(a)
             if key == "select":
                 a.setChecked(True)
+            if key in TOOL_GROUPS_END:
+                tb.addSeparator()
         tb.addSeparator()
         self.color_action = QAction(_swatch(self.canvas.color), "Color", self)
+        self.color_action.setToolTip("Annotation colour")
         self.color_action.triggered.connect(self._pick_color)
         tb.addAction(self.color_action)
         self.width_box = QSpinBox()
         self.width_box.setRange(1, 40)
         self.width_box.setValue(self.canvas.width)
         self.width_box.setSuffix(" px")
+        self.width_box.setToolTip("Line width")
         self.width_box.valueChanged.connect(lambda v: setattr(self.canvas, "width", v))
         tb.addWidget(self.width_box)
         tb.addSeparator()
 
-        self.apply_crop_action = self._act(tb, "Apply crop", None, self.canvas.apply_crop)
+        self.apply_crop_action = self._act(tb, "apply", "Apply crop / cut (Enter)", None, self.canvas.apply_crop)
         self.apply_crop_action.setEnabled(False)
         self.canvas.cropActive.connect(self.apply_crop_action.setEnabled)
         undo = self.stack.createUndoAction(self, "Undo")
         undo.setShortcut(QKeySequence.Undo)
+        undo.setIcon(icons.icon("undo"))
         redo = self.stack.createRedoAction(self, "Redo")
         redo.setShortcut(QKeySequence.Redo)
+        redo.setIcon(icons.icon("redo"))
         tb.addAction(undo)
         tb.addAction(redo)
         tb.addSeparator()
-        self._act(tb, "Copy", "Ctrl+Shift+C", self.copy_to_clipboard)
-        self._act(tb, "Save", QKeySequence.Save, self.save)
-        self._act(tb, "Save as…", QKeySequence.SaveAs, self.save_as)
+        self._act(tb, "copy", "Copy image to clipboard (Ctrl+Shift+C)", "Ctrl+Shift+C", self.copy_to_clipboard)
+        self._act(tb, "save", "Save to library (Ctrl+S)", QKeySequence.Save, self.save)
+        self._act(tb, "saveas", "Save as… (Ctrl+Shift+S)", QKeySequence.SaveAs, self.save_as)
 
-    def _act(self, tb, text, shortcut, slot):
-        a = QAction(text, self)
+    def _choose_tool(self, key: str, hint: str):
+        self.canvas.set_tool(key)
+        self.statusBar().showMessage(hint)
+
+    def _act(self, tb, icon_name, tip, shortcut, slot):
+        a = QAction(icons.icon(icon_name), tip, self)
+        a.setToolTip(tip)
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
         a.triggered.connect(lambda _=False: slot())
@@ -508,6 +598,8 @@ class EditorWindow(QMainWindow):
         vp = self.canvas.viewport().size()
         if r.width() > vp.width() or r.height() > vp.height():
             self.canvas.fitInView(r, Qt.KeepAspectRatio)
+        else:
+            self.canvas.resetTransform()
 
     def _update_size(self, *_):
         r = self.scene.sceneRect()

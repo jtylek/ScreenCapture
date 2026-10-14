@@ -214,9 +214,10 @@ class TextItem(QGraphicsTextItem):
 class CropItem(QGraphicsItem):
     """Crop rubber band: dims everything outside the chosen rectangle."""
 
-    def __init__(self, rect: QRectF):
+    def __init__(self, rect: QRectF, mode: str = "crop"):
         super().__init__()
         self._rect = QRectF(rect)
+        self.mode = mode  # "crop", or "cutv" / "cuth": a strip to cut out
         self.setZValue(10_000)
 
     def rect(self) -> QRectF:
@@ -230,7 +231,24 @@ class CropItem(QGraphicsItem):
     def boundingRect(self):
         return self.scene().sceneRect() if self.scene() else self._rect
 
+    def _paint_cut(self, painter):
+        red = QColor(225, 45, 45)
+        r = self._rect
+        painter.fillRect(r, QColor(225, 45, 45, 60))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(225, 45, 45, 140), Qt.BDiagPattern))
+        painter.drawRect(r)
+        painter.setPen(QPen(red, 1.5, Qt.DashLine))
+        if self.mode == "cutv":
+            painter.drawLine(r.topLeft(), r.bottomLeft())
+            painter.drawLine(r.topRight(), r.bottomRight())
+        else:
+            painter.drawLine(r.topLeft(), r.topRight())
+            painter.drawLine(r.bottomLeft(), r.bottomRight())
+
     def paint(self, painter, option, widget=None):
+        if self.mode != "crop":
+            return self._paint_cut(painter)
         outside = QPainterPath()
         outside.addRect(self.boundingRect())
         inside = QPainterPath()

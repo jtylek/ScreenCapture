@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPen
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from . import icons
 from .capture import CaptureOverlay, grab_current_screen, grab_desktop
 from .editor import EditorWindow
 from .library import Library, LibraryWindow
@@ -83,11 +84,11 @@ class ScreenCapture(QObject):
         t = QSystemTrayIcon(make_icon(), self)
         t.setToolTip("ScreenCapture")
         m = QMenu()
-        m.addAction("Capture region / window", self.capture_region)
-        m.addAction("Capture full screen", lambda: self.capture_fullscreen(0))
-        m.addAction("Capture full screen in 3 s", lambda: self.capture_fullscreen(3000))
+        m.addAction(icons.icon("capture"), "Capture region / window", self.capture_region)
+        m.addAction(icons.icon("screen"), "Capture full screen", lambda: self.capture_fullscreen(0))
+        m.addAction(icons.icon("screen"), "Capture full screen in 3 s", lambda: self.capture_fullscreen(3000))
         m.addSeparator()
-        m.addAction("Library", self.show_library)
+        m.addAction(icons.icon("folder"), "Library", self.show_library)
         m.addSeparator()
         m.addAction("Quit", QApplication.quit)
         t.setContextMenu(m)

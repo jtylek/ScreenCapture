@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from . import icons
 from PySide6.QtCore import QObject, QSize, Qt, QStandardPaths, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QImage, QKeySequence, QPixmap
 from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QToolBar
@@ -106,13 +107,17 @@ class LibraryWindow(QMainWindow):
         tb = QToolBar(self)
         tb.setMovable(False)
         self.addToolBar(tb)
-        tb.addAction("Capture region", self.captureRequested.emit)
-        tb.addAction("Capture screen", self.fullscreenRequested.emit)
+        tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        tb.setIconSize(QSize(22, 22))
+        tb.addAction(icons.icon("capture"), "Capture region", self.captureRequested.emit)
+        tb.addAction(icons.icon("screen"), "Capture screen", self.fullscreenRequested.emit)
         tb.addSeparator()
-        tb.addAction("Open", self._open_selected)
-        tb.addAction("Copy", self._copy_selected)
-        tb.addAction("Delete", self._delete_selected).setShortcut(QKeySequence.Delete)
-        tb.addAction("Open folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.library.root))))
+        tb.addAction(icons.icon("edit"), "Edit", self._open_selected)
+        tb.addAction(icons.icon("copy"), "Copy", self._copy_selected)
+        tb.addAction(icons.icon("trash"), "Delete", self._delete_selected).setShortcut(QKeySequence.Delete)
+        tb.addAction(
+            icons.icon("folder"), "Open folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.library.root)))
+        )
 
         self.library.changed.connect(self.refresh)
         self.refresh()
@@ -150,7 +155,7 @@ class LibraryWindow(QMainWindow):
         if not self.list.itemAt(pos):
             return
         m = QMenu(self)
-        m.addAction("Open in editor", self._open_selected)
-        m.addAction("Copy to clipboard", self._copy_selected)
-        m.addAction("Delete", self._delete_selected)
+        m.addAction(icons.icon("edit"), "Open in editor", self._open_selected)
+        m.addAction(icons.icon("copy"), "Copy to clipboard", self._copy_selected)
+        m.addAction(icons.icon("trash"), "Delete", self._delete_selected)
         m.exec(self.list.viewport().mapToGlobal(pos))

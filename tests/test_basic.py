@@ -71,3 +71,60 @@ def test_pixelate_renders(qapp, tmp_path):
     ed.stack.push(AddCommand(ed.scene, px))
     out = ed.image()
     assert out.pixelColor(50, 50).lightness() not in (0, 255)  # averaged away from pure black/white
+
+
+def test_all_icons_draw(qapp):
+    from screencapture import icons
+
+    for name in icons.NAMES:
+        pm = icons.icon(name).pixmap(24, 24)
+        assert not pm.isNull()
+        img = pm.toImage()
+        assert any(img.pixelColor(x, y).alpha() for x in range(img.width()) for y in range(img.height())), name
+
+
+def _striped(w=100, h=60):
+    """Left 40px red, middle 20px green, right 40px blue."""
+    i = QImage(w, h, QImage.Format_RGB32)
+    for x in range(w):
+        c = QColor("red") if x < 40 else QColor("lime") if x < 60 else QColor("blue")
+        for y in range(h):
+            i.setPixelColor(x, y, c)
+    return i
+
+
+def test_cut_vertical_strip(qapp, tmp_path):
+    from PySide6.QtCore import QLineF
+
+    from screencapture.editor import CutCommand
+
+    ed = EditorWindow(_striped(), Library(tmp_path))
+    gone = BoxItem(QRectF(42, 5, 10, 10))  # inside the strip -> removed
+    kept = BoxItem(QRectF(70, 5, 10, 10))  # right of it -> shifts left by 20
+    for it in (gone, kept):
+        ed.stack.push(AddCommand(ed.scene, it))
+    ed.stack.push(CutCommand(ed.scene, True, 40, 60))
+    out = ed.image()
+    assert out.size().toTuple() == (80, 60)
+    assert out.pixelColor(10, 30) == QColor("red") and out.pixelColor(70, 30) == QColor("blue")
+    assert not any(out.pixelColor(x, 30) == QColor("lime") for x in range(80))
+    assert gone.scene() is None and kept.pos() == QPointF(-20, 0)
+    ed.stack.undo()
+    assert ed.image().size().toTuple() == (100, 60)
+    assert gone.scene() is ed.scene and kept.pos() == QPointF(0, 0)
+
+
+def test_cut_horizontal_strip_via_canvas(qapp, tmp_path):
+    ed = EditorWindow(_striped(60, 100), Library(tmp_path))
+    ed.canvas.set_tool("cuth")
+    from screencapture.items import CropItem
+
+    ed.canvas._crop = CropItem(QRectF(0, 30, 60, 20), "cuth")
+    ed.scene.addItem(ed.canvas._crop)
+    ed.canvas.apply_crop()
+    assert ed.image().size().toTuple() == (60, 80)
+    # cutting the whole image is refused
+    ed.canvas._crop = CropItem(QRectF(0, 0, 60, 80), "cuth")
+    ed.scene.addItem(ed.canvas._crop)
+    ed.canvas.apply_crop()
+    assert ed.image().size().toTuple() == (60, 80)
