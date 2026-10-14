@@ -9,7 +9,7 @@ documentation; keep it accurate when behaviour changes, and don't mention other 
 `screencapture/`: `app.py` (tray app, single-instance control via `--capture` etc.), `capture.py` (overlay),
 `windows.py` (window rectangles: X11 / Win32), `editor.py` + `items.py` (annotation editor, undo commands),
 `library.py` (library storage + window), `hotkey.py` (global hotkey: XGrabKey / RegisterHotKey),
-`autostart.py`, `theme.py`, `icons.py`, `settings_dialog.py`. `packaging/` (Windows installer, launcher, icons),
+`autostart.py`, `theme.py`, `icons.py`, `settings_dialog.py`, `winutil.py` (window placement), `diagnostics.py` (log, runtime check). `packaging/` (Windows installer, launcher, icons),
 `install.sh` / `uninstall.sh` (Linux), `.github/workflows/release.yml`.
 
 ## Commands
@@ -52,6 +52,12 @@ The release asset names are fixed on purpose: the README links to `releases/late
   `PySide6-Essentials<6.12` for Python < 3.12, `diagnostics.check_runtime()` detects it at startup, and CI tests on 3.10.
   Reproduce with `uv python install 3.10` + a 3.10 venv. Raising the pin needs `tests/test_runtime.py` green on 3.10.
 - A crash log is written to `~/.local/share/ScreenCapture/ScreenCapture/screencapture.log` (faulthandler + Qt warnings).
+- Window sizes: never size or place a window from the primary screen or from image pixels. Use `winutil.size_and_place` /
+  `ensure_on_screen` (target screen = where the mouse is, 90% cap, always on screen). A 4K capture once made the editor
+  larger than the screen, so its title bar and close button were unreachable.
+- Coordinates: native window rectangles (Win32 / X11) are physical pixels; Qt keeps each monitor's top-left at its native
+  position and only scales its size. Convert with `capture.native_rect_to_logical` (per-monitor), never `x / dpr`
+  from the desktop origin (that shifted window captures on scaled / secondary monitors).
 - A busy X server can drop a brand-new connection: X11 code retries.
 - UI strings are plain English; there is no translation system.
 - Keep dependencies minimal (`PySide6-Essentials`, `python-xlib` on Linux only).

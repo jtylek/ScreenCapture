@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import icons, theme
+from . import icons, theme, winutil
 from PySide6.QtCore import QObject, QSize, Qt, QStandardPaths, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QImage, QKeySequence, QPixmap
 from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QApplication, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy, QToolBar, QWidget
@@ -92,7 +92,7 @@ class LibraryWindow(QMainWindow):
         super().__init__()
         self.library = library
         self.setWindowTitle("ScreenCapture — Library")
-        self.resize(1150, 650)
+        winutil.size_and_place(self, 1150, 650)
         self.list = QListWidget()
         self.list.setViewMode(QListView.IconMode)
         self.list.setResizeMode(QListView.Adjust)
@@ -144,6 +144,10 @@ class LibraryWindow(QMainWindow):
         icons.tag(self._theme_action, "sun" if dark else "moon")
         self._theme_action.setText("Light mode" if dark else "Dark mode")
         self._theme_action.setToolTip("Switch to light mode" if dark else "Switch to dark mode")
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        winutil.schedule_ensure_on_screen(self)
 
     def set_hotkey(self, text: str):
         if text:

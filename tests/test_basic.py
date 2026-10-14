@@ -351,3 +351,54 @@ def test_icon_size_setting(qapp, tmp_path):
     dlg2.size_box.setCurrentIndex(dlg2.size_box.findData("small"))
     dlg2.accept()
     assert icons.size_name() == "small" and all(b.iconSize().width() == 24 for b in bars)
+
+
+def test_window_rect_conversion_on_scaled_and_secondary_monitors(qapp):
+    from PySide6.QtCore import QRect
+
+    from screencapture.capture import native_rect_to_logical as conv
+
+    # primary 1920x1080 @125% at the origin (logical 1536x864), secondary 1920x1080 @100% to its right
+    two = [(QRect(0, 0, 1536, 864), 1.25), (QRect(1920, 0, 1920, 1080), 1.0)]
+    assert conv(QRect(100, 100, 1000, 500), two) == QRect(80, 80, 800, 400)
+    assert conv(QRect(2000, 100, 800, 600), two) == QRect(2000, 100, 800, 600)  # unscaled secondary: unchanged
+    # secondary monitor at 150%: logical 1280x720 at native x=1920. The old "x / dpr" maths put this window ~640 px
+    # too far left (the shifted capture with a black strip), the monitor's own origin must be used.
+    mixed = [(QRect(0, 0, 1920, 1080), 1.0), (QRect(1920, 0, 1280, 720), 1.5)]
+    assert conv(QRect(2000, 150, 900, 600), mixed) == QRect(1920 + 53, 100, 600, 400)
+    assert conv(QRect(2000, 150, 900, 600), mixed).x() != round(2000 / 1.5)
+    # a monitor to the left of the primary (negative origin)
+    left = [(QRect(-1920, 0, 1920, 1080), 1.0), (QRect(0, 0, 1536, 864), 1.25)]
+    assert conv(QRect(-1800, 50, 600, 400), left) == QRect(-1800, 50, 600, 400)
+    assert conv(QRect(500, 500, 250, 125), []) == QRect(500, 500, 250, 125)  # unknown monitor: left alone
+
+
+def test_windows_stay_on_the_screen(qapp, tmp_path):
+    """A huge capture must not produce a window larger than the screen (title bar / close button unreachable)."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QGuiApplication
+
+    from screencapture import winutil
+    from screencapture.library import LibraryWindow
+
+    avail = QGuiApplication.primaryScreen().availableGeometry()  # 800x600 on the offscreen platform
+    lib = Library(tmp_path)
+    ed = EditorWindow(_img(5120, 2880), lib)  # a 5K capture
+    ed.show()
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert avail.contains(ed.frameGeometry()), (avail, ed.frameGeometry())
+    assert ed.minimumSizeHint().width() <= avail.width() and ed.minimumSizeHint().height() <= avail.height()
+    # dragged (or restored) off-screen: shown again, it comes back with its title bar reachable
+    ed.move(QPoint(avail.right() - 40, avail.bottom() - 30))
+    ed.hide()
+    ed.show()
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert avail.contains(ed.frameGeometry())
+    lw = LibraryWindow(lib)
+    lw.show()
+    QApplication.processEvents()
+    QApplication.processEvents()
+    assert avail.contains(lw.frameGeometry())
+    winutil.ensure_on_screen(lw)

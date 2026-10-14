@@ -1,9 +1,30 @@
 """Screen grabbing and the region/window selection overlay."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
+
+
+def native_rect_to_logical(r: QRect, screens=None) -> QRect:
+    """Window rectangles arrive in native (physical) desktop pixels; the overlay works in Qt's logical coordinates.
+
+    Qt keeps every monitor's top-left at its native position and only scales its size, so a window on a
+    scaled or secondary monitor must be converted relative to *that* monitor's origin, not the desktop's.
+    `screens` is a list of (logical geometry, device pixel ratio); default: the real ones."""
+    if screens is None:
+        screens = [(s.geometry(), s.devicePixelRatio()) for s in QGuiApplication.screens()]
+    c = r.center()
+    for g, d in screens:
+        native = QRect(g.topLeft(), QSize(round(g.width() * d), round(g.height() * d)))
+        if native.contains(c):
+            return QRect(
+                g.x() + round((r.x() - g.x()) / d),
+                g.y() + round((r.y() - g.y()) / d),
+                round(r.width() / d),
+                round(r.height() / d),
+            )
+    return QRect(r)  # not on any known monitor: assume no scaling
 
 
 def grab_desktop() -> tuple[QImage, QRect, float]:
@@ -40,11 +61,8 @@ class CaptureOverlay(QWidget):
     def __init__(self, desktop: QImage, geometry: QRect, dpr: float, windows: list[QRect]):
         super().__init__()
         self._img, self._geo, self._dpr = desktop, geometry, dpr
-        # window rects arrive in physical desktop pixels -> logical widget coordinates
-        self._windows = [
-            QRect(int(r.x() / dpr) - geometry.x(), int(r.y() / dpr) - geometry.y(), int(r.width() / dpr), int(r.height() / dpr))
-            for r in windows
-        ]
+        # window rects arrive in native desktop pixels -> logical coordinates -> overlay widget coordinates
+        self._windows = [native_rect_to_logical(r).translated(-geometry.topLeft()) for r in windows]
         self._press: QPoint | None = None
         self._cur = QPoint()
         self._sel: QRect | None = None

@@ -45,7 +45,7 @@ from .items import (
     StepItem,
     TextItem,
 )
-from . import icons
+from . import icons, winutil
 from .library import Library
 
 # key, tooltip, status-bar hint
@@ -594,11 +594,8 @@ class EditorWindow(QMainWindow):
         self.stack.cleanChanged.connect(lambda _: self._update_title())
         self._update_size()
         self._update_title()
-        avail = QGuiApplication.primaryScreen().availableGeometry()
-        self.setMinimumWidth(700)
-        self.resize(
-            max(900, min(image.width() + 40, int(avail.width() * 0.9))), min(image.height() + 120, int(avail.height() * 0.9))
-        )
+        dpr = winutil.target_screen().devicePixelRatio()  # image pixels -> screen units
+        winutil.size_and_place(self, max(int(image.width() / dpr) + 40, 900), max(int(image.height() / dpr) + 150, 560))
         QTimer.singleShot(0, self._fit)
 
     def _build_toolbar(self):
@@ -789,6 +786,10 @@ class EditorWindow(QMainWindow):
             return
         name = self.path.name if self.path else "untitled"
         self.setWindowTitle(f"{name}{'' if clean else ' *'} — ScreenCapture")
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        winutil.schedule_ensure_on_screen(self)
 
     def closeEvent(self, e):
         if not self.stack.isClean():
