@@ -14,6 +14,8 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from . import icons
 from .capture import CaptureOverlay, grab_current_screen, grab_desktop
 from .editor import EditorWindow
+from .hotkey import HotkeyManager
+from .settings_dialog import SettingsDialog
 from .library import Library, LibraryWindow
 from .windows import window_rects
 
@@ -21,20 +23,7 @@ SERVER_NAME = f"ScreenCapture-{getpass.getuser()}"
 COMMANDS = {"capture", "fullscreen", "library", "quit"}
 
 
-def make_icon() -> QIcon:
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setBrush(QColor("#2f81f7"))
-    p.setPen(Qt.NoPen)
-    p.drawRoundedRect(2, 2, 60, 60, 12, 12)
-    p.setPen(QPen(Qt.white, 5, Qt.SolidLine, Qt.SquareCap))
-    for x, y, dx, dy in ((16, 16, 1, 1), (48, 16, -1, 1), (16, 48, 1, -1), (48, 48, -1, -1)):
-        p.drawLine(x, y, x + 12 * dx, y)
-        p.drawLine(x, y, x, y + 12 * dy)
-    p.end()
-    return QIcon(pm)
+make_icon = icons.app_icon
 
 
 class ScreenCapture(QObject):
@@ -45,11 +34,18 @@ class ScreenCapture(QObject):
         self.library_window.openRequested.connect(self.open_editor)
         self.library_window.captureRequested.connect(self.capture_region)
         self.library_window.fullscreenRequested.connect(lambda: self.capture_fullscreen(0))
+        self.library_window.settingsRequested.connect(self.open_settings)
         self.editors: dict[Path, EditorWindow] = {}
         self._hidden: list = []
         self._overlay: CaptureOverlay | None = None
         self.tray = self._make_tray()
         self.server = self._make_server()
+        self.hotkeys = HotkeyManager()
+        self.hotkeys.triggered.connect(self.capture_region)
+        err = self.hotkeys.apply(self.hotkeys.saved(), persist=False)
+        self.library_window.set_hotkey(self.hotkeys.current)
+        if err:
+            self._warn(f"Capture hotkey '{self.hotkeys.saved()}' is not active. {err}")
 
     # control channel (second `screencapture --capture` invocation talks to the running one) ----
 
@@ -76,6 +72,16 @@ class ScreenCapture(QObject):
         elif cmd == "quit":
             QApplication.quit()
 
+    def _warn(self, text: str):
+        if self.tray is not None:
+            self.tray.showMessage("ScreenCapture", text, QSystemTrayIcon.Warning, 10000)
+        self.library_window.statusBar().showMessage(text, 15000)
+
+    def open_settings(self):
+        dlg = SettingsDialog(self.hotkeys, self.library_window)
+        dlg.exec()
+        self.library_window.set_hotkey(self.hotkeys.current)
+
     # tray -----------------------------------------------------------------------------------
 
     def _make_tray(self):
@@ -89,6 +95,7 @@ class ScreenCapture(QObject):
         m.addAction(icons.icon("screen"), "Capture full screen in 3 s", lambda: self.capture_fullscreen(3000))
         m.addSeparator()
         m.addAction(icons.icon("folder"), "Library", self.show_library)
+        m.addAction(icons.icon("settings"), "Settings…", self.open_settings)
         m.addSeparator()
         m.addAction("Quit", QApplication.quit)
         t.setContextMenu(m)
@@ -191,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sc = ScreenCapture()
     app.setQuitOnLastWindowClosed(sc.tray is None)
+    app.aboutToQuit.connect(sc.hotkeys.stop)
     if cmd in ("capture", "fullscreen"):
         sc.dispatch(cmd)
     elif not (args.tray and sc.tray is not None):

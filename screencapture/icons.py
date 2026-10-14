@@ -176,12 +176,23 @@ def _trash(p, fg, bg):
     _line(p, 14, 10.5, 14, 16.5)
 
 
+def _settings(p, fg, bg):  # gear
+    import math
+
+    p.drawEllipse(QPointF(12, 12), 6.2, 6.2)
+    p.drawEllipse(QPointF(12, 12), 2.4, 2.4)
+    p.setPen(QPen(fg, 2.6, Qt.SolidLine, Qt.RoundCap))
+    for i in range(8):
+        a = i * math.pi / 4
+        _line(p, 12 + 7.6 * math.cos(a), 12 + 7.6 * math.sin(a), 12 + 9.6 * math.cos(a), 12 + 9.6 * math.sin(a))
+
+
 _DRAW = {
     "select": _select, "rect": _rect, "ellipse": _ellipse, "arrow": _arrow, "line": _linetool,
     "text": _text, "highlight": _highlight, "pixelate": _pixelate, "step": _step,
     "crop": _crop, "cutv": _cutv, "cuth": _cuth, "apply": _apply, "undo": _undo, "redo": _redo,
     "copy": _copy, "save": _save, "saveas": _saveas, "capture": _capture, "screen": _screen,
-    "edit": _edit, "folder": _folder, "trash": _trash,
+    "edit": _edit, "settings": _settings, "folder": _folder, "trash": _trash,
 }
 NAMES = tuple(_DRAW)
 _SIZE = 96  # drawn large, scaled down smoothly by Qt for any toolbar size / DPI
@@ -200,3 +211,21 @@ def icon(name: str) -> QIcon:
     _DRAW[name](p, fg, bg)
     p.end()
     return QIcon(pm)  # Qt derives the greyed disabled look from this
+
+
+def app_icon() -> QIcon:
+    """The application icon (blue rounded square with white capture corners)."""
+    pm = QPixmap(256, 256)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.scale(4, 4)
+    p.setBrush(QColor("#2f81f7"))
+    p.setPen(Qt.NoPen)
+    p.drawRoundedRect(2, 2, 60, 60, 12, 12)
+    p.setPen(QPen(Qt.white, 5, Qt.SolidLine, Qt.SquareCap))
+    for x, y, dx, dy in ((16, 16, 1, 1), (48, 16, -1, 1), (16, 48, 1, -1), (48, 48, -1, -1)):
+        p.drawLine(x, y, x + 12 * dx, y)
+        p.drawLine(x, y, x, y + 12 * dy)
+    p.end()
+    return QIcon(pm)

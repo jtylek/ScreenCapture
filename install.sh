@@ -60,10 +60,8 @@ cat <<EOT
 
 Installed. Start it from the menu ("ScreenCapture") or run:  screencapture
 
-Make PrintScreen start a capture (Linux Mint / Cinnamon):
-  Menu > Keyboard > Shortcuts > Custom Shortcuts > Add custom shortcut
-    Name:    ScreenCapture
-    Command: $BIN --capture
-  then click the shortcut's key cell and press PrintScreen
-  (first clear the built-in "Take a screenshot" shortcut that uses PrintScreen).
+Set your capture hotkey in the app: Library window > Settings (gear icon).
+To use PrintScreen, first clear the system's own screenshot shortcut
+(Menu > Keyboard > Shortcuts), because the system holds that key.
+Alternative: add a custom system shortcut with the command  $BIN --capture
 EOT

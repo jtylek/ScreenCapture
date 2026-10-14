@@ -9,7 +9,7 @@ from pathlib import Path
 from . import icons
 from PySide6.QtCore import QObject, QSize, Qt, QStandardPaths, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QImage, QKeySequence, QPixmap
-from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QToolBar
+from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy, QToolBar, QWidget
 
 MAX_ITEMS = 500
 THUMB = QSize(220, 150)
@@ -86,6 +86,7 @@ class LibraryWindow(QMainWindow):
     openRequested = Signal(Path)
     captureRequested = Signal()
     fullscreenRequested = Signal()
+    settingsRequested = Signal()
 
     def __init__(self, library: Library):
         super().__init__()
@@ -109,18 +110,34 @@ class LibraryWindow(QMainWindow):
         self.addToolBar(tb)
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         tb.setIconSize(QSize(22, 22))
-        tb.addAction(icons.icon("capture"), "Capture region", self.captureRequested.emit)
+        self._capture_action = tb.addAction(icons.icon("capture"), "Capture region", self.captureRequested.emit)
         tb.addAction(icons.icon("screen"), "Capture screen", self.fullscreenRequested.emit)
         tb.addSeparator()
-        tb.addAction(icons.icon("edit"), "Edit", self._open_selected)
+        tb.addAction(icons.icon("edit"), "Open in editor", self._open_selected)
         tb.addAction(icons.icon("copy"), "Copy", self._copy_selected)
         tb.addAction(icons.icon("trash"), "Delete", self._delete_selected).setShortcut(QKeySequence.Delete)
         tb.addAction(
             icons.icon("folder"), "Open folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.library.root)))
         )
 
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        tb.addWidget(spacer)
+        tb.addAction(icons.icon("settings"), "Settings", self.settingsRequested.emit)
+
+        self.setWindowIcon(icons.app_icon())
+        self.hotkey_label = QLabel()
+        self.statusBar().addPermanentWidget(self.hotkey_label)
         self.library.changed.connect(self.refresh)
         self.refresh()
+
+    def set_hotkey(self, text: str):
+        if text:
+            self.hotkey_label.setText(f"Capture hotkey: {text}")
+            self._capture_action.setToolTip(f"Capture region / window ({text})")
+        else:
+            self.hotkey_label.setText("No capture hotkey — set one in Settings")
+            self._capture_action.setToolTip("Capture region / window")
 
     def refresh(self):
         self.list.clear()
