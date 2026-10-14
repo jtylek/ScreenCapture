@@ -53,6 +53,13 @@ switches between light and dark in one click.
 application. Default `Ctrl+Shift+Print`. Works on Windows and Linux/X11 (not Wayland). `Ctrl+Alt+letter` is
 refused because it is AltGr on many keyboards. Clear the box to turn the hotkey off.
 
+Using **PrintScreen** as the hotkey:
+
+- **Linux Mint:** the system holds that key for its own screenshot tool. Clear the system screenshot
+  shortcut under *Keyboard → Shortcuts* first. ScreenCapture tells you when a key is taken.
+- **Windows:** Windows may be holding PrintScreen for the Snipping Tool. Turn that off under
+  *Settings → Accessibility → Keyboard → Use the Print screen button to open screen capture*.
+
 ## Command line
 
 `screencapture` (library) · `--capture` · `--fullscreen` · `--library` · `--tray` (start quietly) · `--quit`.
