@@ -89,10 +89,16 @@ class _X11Hotkey:
             from Xlib import X, XK, display
         except ImportError:
             return "python-xlib is not installed."
-        try:
-            d = display.Display()
-        except Exception:
-            return "Could not connect to the X11 display."
+        d, last = None, None
+        for attempt in range(6):  # a busy X server occasionally drops a fresh connection (seen at login / under load)
+            try:
+                d = display.Display()
+                break
+            except Exception as e:
+                last = e
+                time.sleep(0.1 * (attempt + 1))
+        if d is None:
+            return f"Could not connect to the X11 display ({type(last).__name__}: {last})."
         keysym = XK.string_to_keysym(p.key_name)
         code = d.keysym_to_keycode(keysym) if keysym else 0
         if not code:
