@@ -438,3 +438,61 @@ def test_windows_stay_on_the_screen(qapp, tmp_path):
     QApplication.processEvents()
     assert avail.contains(lw.frameGeometry())
     winutil.ensure_on_screen(lw)
+
+
+def test_every_drawn_annotation_can_be_selected_moved_and_deleted(qapp, tmp_path):
+    """Regression: arrows and lines were created without the selectable / movable flags."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtTest import QTest
+
+    from PySide6.QtWidgets import QGraphicsItem
+
+    ed = EditorWindow(_img(700, 450), Library(tmp_path))
+    ed.show()
+    QApplication.processEvents()
+    c = ed.canvas
+    vp = c.viewport()
+
+    def at(x, y):
+        return c.mapFromScene(x, y)
+
+    def drag(a, b):
+        QTest.mousePress(vp, Qt.LeftButton, pos=at(*a))
+        QTest.mouseMove(vp, at(*b))
+        QTest.mouseRelease(vp, Qt.LeftButton, pos=at(*b))
+
+    def new_items(before):
+        return [i for i in ed.scene.annotations() if id(i) not in before]
+
+    row = 40
+    for tool in ("rect", "ellipse", "arrow", "line", "highlight", "pixelate", "step"):
+        before = {id(i) for i in ed.scene.annotations()}
+        c.set_tool(tool)
+        if tool == "step":
+            QTest.mouseClick(vp, Qt.LeftButton, pos=at(100, row + 20))
+        else:
+            drag((60, row), (260, row + 60))
+        (it,) = new_items(before)
+        assert it.flags() & QGraphicsItem.ItemIsSelectable and it.flags() & QGraphicsItem.ItemIsMovable, tool
+        # select tool: click it -> selected; Delete removes it; undo brings it back
+        c.set_tool("select")
+        if tool in ("arrow", "line"):
+            target = it.mapToScene(it.line().pointAt(0.3))  # on the line itself
+        elif tool in ("rect", "ellipse"):
+            r = it.rect()
+            target = it.mapToScene(QPointF(r.left(), r.center().y()))  # outline only: click the left edge
+        else:
+            target = it.sceneBoundingRect().center()
+        QTest.mouseClick(vp, Qt.LeftButton, pos=at(target.x(), target.y()))
+        assert it.isSelected(), f"{tool}: clicking it did not select it"
+        # drag it 50 px right
+        old = it.pos()
+        drag((target.x(), target.y()), (target.x() + 50, target.y()))
+        assert it.pos().x() - old.x() == pytest.approx(50, abs=2), f"{tool}: could not be moved"
+        ed.canvas.delete_selected()
+        assert it.scene() is None, f"{tool}: not deleted"
+        ed.stack.undo()
+        assert it.scene() is ed.scene
+        ed.canvas.scene().clearSelection()
+        row += 70

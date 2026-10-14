@@ -385,7 +385,9 @@ class Canvas(QGraphicsView):
         if t == "ellipse":
             return self._styled(OvalItem(QRectF(p, p)))
         if t in ("arrow", "line"):
-            return ArrowItem(QLineF(p, p), self.pen(), head=(t == "arrow"))
+            it = ArrowItem(QLineF(p, p), self.pen(), head=(t == "arrow"))
+            it.setFlags(it.flags() | MOVABLE)  # was missing: arrows and lines could not be selected, moved or deleted
+            return it
         if t == "highlight":
             it = HighlightItem(QRectF(p, p))
             it.setBrush(QColor(255, 235, 0, 110))
