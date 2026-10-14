@@ -10,7 +10,7 @@ python -m PyInstaller --noconfirm --clean --windowed --name ScreenCapture `
     --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick --exclude-module PySide6.QtPdf `
     --exclude-module PySide6.QtSvg --exclude-module PySide6.QtNetworkAuth `
     --collect-submodules screencapture `
-    screencapture\__main__.py
+    packaging\launcher.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 
 $iscc = Get-Command iscc -ErrorAction SilentlyContinue
