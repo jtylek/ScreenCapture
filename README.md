@@ -6,7 +6,9 @@ and keep your screenshots in a library. Output is flattened PNG.
 - **Capture** – drag a region, or click a window (it is highlighted as you hover); full-screen capture
   with optional 3 s delay from the tray menu. `Esc` / right click cancels.
 - **Annotate** – rectangle, ellipse, arrow, line, text, highlight, blur (pixelate), numbered steps.
-  Move items, `Delete` removes, full undo/redo. Color and line width in the toolbar.
+  Text has its own font, size, bold and italic controls. Color and line width in the toolbar; full undo/redo.
+- **Select and delete** – with the Select tool click an item (Ctrl+click adds), drag a box around several, or press
+  `Ctrl+A`. Remove them with the `Delete` key, the trash button, or right-click → *Delete*.
 - **Crop** – drag the crop rectangle (edges resize, inside moves), `Enter` / *Apply*.
 - **Cut out** – remove a vertical or horizontal strip from the middle of the image; the two sides are joined.
 - **Library** – every capture is saved automatically (newest first, last 500 kept). Open one to edit
@@ -50,6 +52,8 @@ Pushing a `v*` tag builds the installer and Linux bundle in GitHub Actions and a
 
 ## Settings
 
+**Icon size** (Library → Settings): small, medium (default) or large toolbar icons.
+
 **Startup** (Library → Settings): start ScreenCapture quietly in the tray when you sign in to Windows / Linux, so
 the capture hotkey is always ready.
 
@@ -66,6 +70,18 @@ Using **PrintScreen** as the hotkey:
   shortcut under *Keyboard → Shortcuts* first. ScreenCapture tells you when a key is taken.
 - **Windows:** Windows may be holding PrintScreen for the Snipping Tool. Turn that off under
   *Settings → Accessibility → Keyboard → Use the Print screen button to open screen capture*.
+
+## Troubleshooting
+
+ScreenCapture writes a log (including Python tracebacks if it ever crashes hard) to
+`~/.local/share/ScreenCapture/ScreenCapture/screencapture.log` on Linux and
+`%LOCALAPPDATA%\ScreenCapture\ScreenCapture\screencapture.log` on Windows. Attach it when reporting a problem.
+On Linux you can also run `screencapture` in a terminal to see errors directly.
+
+PySide6 6.12.0 has a bug that crashes Python versions older than 3.12 (Linux Mint 21 / Ubuntu 22.04 ship 3.10), so
+the installer picks an older working PySide6 there. If you installed earlier and see
+`Fatal Python error: none_dealloc`, run `~/.local/share/screencapture/venv/bin/pip install "PySide6-Essentials<6.12"`
+or simply run `./install.sh` again.
 
 ## Command line
 

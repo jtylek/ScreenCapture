@@ -280,3 +280,74 @@ def test_closing_editor_with_selection_raises_nothing(qapp, tmp_path):
     finally:
         sys.excepthook = old
     assert errors == []
+
+
+def _typed_text(ed, text="hello"):
+    """Create a text annotation the way the user does: text tool, click, type, finish (focus out)."""
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QFocusEvent
+
+    from screencapture.items import TextItem
+
+    before = {id(i) for i in ed.scene.items() if isinstance(i, TextItem)}
+    ed.canvas.set_tool("text")
+    ed.canvas._add_text(QPointF(20, 20))
+    it = next(i for i in ed.scene.items() if isinstance(i, TextItem) and id(i) not in before)
+    it.setPlainText(text)
+    it.focusOutEvent(QFocusEvent(QEvent.FocusOut))
+    return it
+
+
+def test_text_font_controls(qapp, tmp_path):
+    from screencapture.items import TextItem
+
+    ed = EditorWindow(_img(400, 300), Library(tmp_path))
+    ed.show()
+    it = _typed_text(ed)
+    assert it.isSelected() and ed.stack.count() == 1
+    old = it.font()
+    ed.font_size_box.setValue(48)  # toolbar spin box -> applies to the selected text
+    ed.bold_action.setChecked(True)
+    ed.italic_action.setChecked(True)
+    assert it.font().pixelSize() == 48 and it.font().bold() and it.font().italic()
+    ed.stack.undo()
+    ed.stack.undo()
+    ed.stack.undo()
+    assert it.font().pixelSize() == old.pixelSize() and not it.font().bold()
+    ed.stack.redo()
+    ed.stack.redo()
+    ed.stack.redo()
+    assert it.font().pixelSize() == 48
+    # new text picks up the chosen style
+    ed.canvas.scene().clearSelection()
+    ed.canvas.set_text_style(family=ed.canvas.font_family, size=33)
+    new = _typed_text(ed, "second")
+    assert new is not it and new.font().pixelSize() == 33 and it.font().pixelSize() == 48
+    # selecting a text shows its font in the controls
+    it.setSelected(True)
+    ed.canvas.scene().clearSelection()
+    it.setSelected(True)
+    assert ed.font_size_box.value() == 48 and ed.bold_action.isChecked()
+
+
+def test_icon_size_setting(qapp, tmp_path):
+    from PySide6.QtWidgets import QToolBar
+
+    from screencapture import icons
+    from screencapture.hotkey import HotkeyManager
+    from screencapture.settings_dialog import SettingsDialog
+
+    assert icons.size_name() == "medium" and icons.toolbar_pixels() == 32  # bigger than the old 24 by default
+    ed = EditorWindow(_img(300, 200), Library(tmp_path))
+    ed.show()
+    bars = ed.findChildren(QToolBar)
+    assert len(bars) == 2 and all(b.iconSize().width() == 32 for b in bars)
+    dlg = SettingsDialog(HotkeyManager())
+    dlg.size_box.setCurrentIndex(dlg.size_box.findData("large"))
+    assert all(b.iconSize().width() == 40 for b in bars)  # live preview
+    dlg.reject()
+    assert all(b.iconSize().width() == 32 for b in bars) and icons.size_name() == "medium"  # reverted
+    dlg2 = SettingsDialog(HotkeyManager())
+    dlg2.size_box.setCurrentIndex(dlg2.size_box.findData("small"))
+    dlg2.accept()
+    assert icons.size_name() == "small" and all(b.iconSize().width() == 24 for b in bars)

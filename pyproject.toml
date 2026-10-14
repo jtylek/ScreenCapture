@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "screencapture"
-version = "0.3.0"
+version = "0.4.0"
 description = "Simple screen capture tool for Windows and Linux with annotations and a library of screenshots."
 readme = "README.md"
 requires-python = ">=3.9"

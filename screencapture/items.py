@@ -172,11 +172,9 @@ class PixelateItem(QGraphicsRectItem):
 
 
 class TextItem(QGraphicsTextItem):
-    def __init__(self, color: QColor, size: int, commit_cb):
+    def __init__(self, color: QColor, font: QFont, commit_cb):
         super().__init__()
-        f = QFont()
-        f.setPixelSize(size)
-        self.setFont(f)
+        self.setFont(font)
         self.setDefaultTextColor(color)
         self.setFlags(MOVABLE | QGraphicsItem.ItemIsFocusable)
         self._commit_cb = commit_cb
@@ -199,9 +197,11 @@ class TextItem(QGraphicsTextItem):
         if self.toPlainText().strip() == "":
             if self.scene() is not None:
                 self.scene().removeItem(self)
-        elif not self._committed:
-            self._committed = True
-            self._commit_cb(self)
+        else:
+            self.setSelected(True)  # so the font controls act on the text that was just typed
+            if not self._committed:
+                self._committed = True
+                self._commit_cb(self)
 
     def paint(self, painter, option, widget=None):
         # draw only a custom outline when selected (Qt's default is a heavy dotted box)

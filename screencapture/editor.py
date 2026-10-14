@@ -8,6 +8,7 @@ from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QColor,
+    QFont,
     QGuiApplication,
     QIcon,
     QImage,
@@ -21,6 +22,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QColorDialog,
     QFileDialog,
+    QFontComboBox,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
@@ -146,6 +148,20 @@ class CropCommand(QUndoCommand):
             i.moveBy(self.rect.x(), self.rect.y())
 
 
+class FontCommand(QUndoCommand):
+    def __init__(self, changes):  # [(item, old_font, new_font)]
+        super().__init__("Text style")
+        self.changes = changes
+
+    def redo(self):
+        for item, _old, new in self.changes:
+            item.setFont(new)
+
+    def undo(self):
+        for item, old, _new in self.changes:
+            item.setFont(old)
+
+
 class CutCommand(QUndoCommand):
     """Removes a vertical (x range) or horizontal (y range) strip and joins the two remaining parts.
 
@@ -207,6 +223,10 @@ class Canvas(QGraphicsView):
         self.tool = "select"
         self.color = QColor("#e53935")
         self.width = 4
+        self.font_family = QFont().family()
+        self.font_size = 20  # pixels
+        self.font_bold = False
+        self.font_italic = False
         self._item = None
         self._start = QPointF()
         self._crop: CropItem | None = None
@@ -395,8 +415,48 @@ class Canvas(QGraphicsView):
         r = it.rect()
         return r.width() < 4 and r.height() < 4
 
+    def text_font(self) -> QFont:
+        f = QFont(self.font_family)
+        f.setPixelSize(self.font_size)
+        f.setBold(self.font_bold)
+        f.setItalic(self.font_italic)
+        return f
+
+    def set_text_style(self, family=None, size=None, bold=None, italic=None):
+        """Sets the font for new text and applies it to the selected / currently edited text items."""
+        if family is not None:
+            self.font_family = family
+        if size is not None:
+            self.font_size = size
+        if bold is not None:
+            self.font_bold = bold
+        if italic is not None:
+            self.font_italic = italic
+        targets = [i for i in self.scene().selectedItems() if isinstance(i, TextItem)]
+        focus = self.scene().focusItem()
+        if isinstance(focus, TextItem) and focus not in targets and focus.textInteractionFlags() != Qt.NoTextInteraction:
+            targets.append(focus)  # the text being typed right now
+        changes = []
+        for it in targets:
+            f = QFont(it.font())
+            if family is not None:
+                f.setFamily(family)
+            if size is not None:
+                f.setPixelSize(size)
+            if bold is not None:
+                f.setBold(bold)
+            if italic is not None:
+                f.setItalic(italic)
+            if f != it.font():
+                if it._committed:
+                    changes.append((it, QFont(it.font()), f))
+                else:  # still being typed: not in the undo stack yet
+                    it.setFont(f)
+        if changes:
+            self.stack.push(FontCommand(changes))
+
     def _add_text(self, p: QPointF):
-        it = TextItem(self.color, 16 + self.width * 2, lambda i: self.stack.push(AddCommand(self.scene(), i)))
+        it = TextItem(self.color, self.text_font(), lambda i: self.stack.push(AddCommand(self.scene(), i)))
         it.setPos(p)
         self.scene().addItem(it)
         it.start_edit()
@@ -428,6 +488,7 @@ class Canvas(QGraphicsView):
             self._crop_drag = (hit, p, self._crop.rect())
             return
         if self.tool == "text":
+            self.scene().clearSelection()
             under = self.scene().itemAt(p, self.transform())
             if isinstance(under, TextItem):
                 under.start_edit()
@@ -534,17 +595,18 @@ class EditorWindow(QMainWindow):
         self._update_size()
         self._update_title()
         avail = QGuiApplication.primaryScreen().availableGeometry()
-        self.setMinimumWidth(820)
+        self.setMinimumWidth(700)
         self.resize(
-            max(820, min(image.width() + 40, int(avail.width() * 0.9))), min(image.height() + 120, int(avail.height() * 0.9))
+            max(900, min(image.width() + 40, int(avail.width() * 0.9))), min(image.height() + 120, int(avail.height() * 0.9))
         )
         QTimer.singleShot(0, self._fit)
 
     def _build_toolbar(self):
+        n = icons.toolbar_pixels()
         tb = QToolBar("Tools", self)
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        tb.setIconSize(QSize(24, 24))
+        tb.setIconSize(QSize(n, n))
         self.addToolBar(tb)
         group = QActionGroup(self)
         for key, label, hint in TOOLS:
@@ -557,21 +619,51 @@ class EditorWindow(QMainWindow):
                 a.setChecked(True)
             if key in TOOL_GROUPS_END:
                 tb.addSeparator()
-        tb.addSeparator()
+
+        self.addToolBarBreak()  # second row: style, edit actions, output
+        tb2 = QToolBar("Style", self)
+        tb2.setMovable(False)
+        tb2.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        tb2.setIconSize(QSize(n, n))
+        self.addToolBar(tb2)
         self.color_action = QAction(_swatch(self.canvas.color), "Color", self)
         self.color_action.setToolTip("Annotation colour")
         self.color_action.triggered.connect(self._pick_color)
-        tb.addAction(self.color_action)
+        tb2.addAction(self.color_action)
         self.width_box = QSpinBox()
         self.width_box.setRange(1, 40)
         self.width_box.setValue(self.canvas.width)
         self.width_box.setSuffix(" px")
         self.width_box.setToolTip("Line width")
         self.width_box.valueChanged.connect(lambda v: setattr(self.canvas, "width", v))
-        tb.addWidget(self.width_box)
-        tb.addSeparator()
+        tb2.addWidget(self.width_box)
+        tb2.addSeparator()
 
-        self.apply_crop_action = self._act(tb, "apply", "Apply crop / cut (Enter)", None, self.canvas.apply_crop)
+        # text font: applies to new text and to the selected text
+        self.font_box = QFontComboBox()
+        self.font_box.setCurrentFont(QFont(self.canvas.font_family))
+        self.font_box.setMaximumWidth(190)
+        self.font_box.setToolTip("Text font")
+        self.font_box.activated.connect(lambda _=0: self._style_changed(family=self.font_box.currentFont().family()))
+        tb2.addWidget(self.font_box)
+        self.font_size_box = QSpinBox()
+        self.font_size_box.setRange(6, 300)
+        self.font_size_box.setValue(self.canvas.font_size)
+        self.font_size_box.setSuffix(" px")
+        self.font_size_box.setToolTip("Text size")
+        self.font_size_box.valueChanged.connect(lambda v: self._style_changed(size=v))
+        tb2.addWidget(self.font_size_box)
+        self.bold_action = icons.tag(QAction("Bold", self, checkable=True), "bold")
+        self.bold_action.setToolTip("Bold text")
+        self.bold_action.toggled.connect(lambda on: self._style_changed(bold=on))
+        tb2.addAction(self.bold_action)
+        self.italic_action = icons.tag(QAction("Italic", self, checkable=True), "italic")
+        self.italic_action.setToolTip("Italic text")
+        self.italic_action.toggled.connect(lambda on: self._style_changed(italic=on))
+        tb2.addAction(self.italic_action)
+        tb2.addSeparator()
+
+        self.apply_crop_action = self._act(tb2, "apply", "Apply crop / cut (Enter)", None, self.canvas.apply_crop)
         self.apply_crop_action.setEnabled(False)
         self.canvas.cropActive.connect(self.apply_crop_action.setEnabled)
         undo = self.stack.createUndoAction(self, "Undo")
@@ -580,15 +672,41 @@ class EditorWindow(QMainWindow):
         redo = self.stack.createRedoAction(self, "Redo")
         redo.setShortcut(QKeySequence.Redo)
         icons.tag(redo, "redo")
-        tb.addAction(undo)
-        tb.addAction(redo)
-        self.delete_action = self._act(tb, "trash", "Delete selected (Delete)", None, self.canvas.delete_selected)
+        tb2.addAction(undo)
+        tb2.addAction(redo)
+        self.delete_action = self._act(tb2, "trash", "Delete selected (Delete)", None, self.canvas.delete_selected)
         self.delete_action.setEnabled(False)
         self.scene.selectionChanged.connect(self._sync_delete_action)
-        tb.addSeparator()
-        self._act(tb, "copy", "Copy image to clipboard (Ctrl+Shift+C)", "Ctrl+Shift+C", self.copy_to_clipboard)
-        self._act(tb, "save", "Save to library (Ctrl+S)", QKeySequence.Save, self.save)
-        self._act(tb, "saveas", "Save as… (Ctrl+Shift+S)", QKeySequence.SaveAs, self.save_as)
+        self.scene.selectionChanged.connect(self._sync_font_controls)
+        tb2.addSeparator()
+        self._act(tb2, "copy", "Copy image to clipboard (Ctrl+Shift+C)", "Ctrl+Shift+C", self.copy_to_clipboard)
+        self._act(tb2, "save", "Save to library (Ctrl+S)", QKeySequence.Save, self.save)
+        self._act(tb2, "saveas", "Save as… (Ctrl+Shift+S)", QKeySequence.SaveAs, self.save_as)
+
+    def _style_changed(self, **kw):
+        self.canvas.set_text_style(**kw)
+        self.canvas.viewport().setFocus()  # so Delete / Enter reach the canvas again
+
+    def _sync_font_controls(self):
+        """Show the font of the selected text in the controls (without re-applying it)."""
+        try:
+            texts = [i for i in self.canvas.scene().selectedItems() if isinstance(i, TextItem)]
+            if len(texts) != 1:
+                return
+            f = texts[0].font()
+            widgets = (self.font_box, self.font_size_box, self.bold_action, self.italic_action)
+            for w in widgets:
+                w.blockSignals(True)
+            self.font_box.setCurrentFont(f)
+            self.font_size_box.setValue(f.pixelSize() if f.pixelSize() > 0 else self.canvas.font_size)
+            self.bold_action.setChecked(f.bold())
+            self.italic_action.setChecked(f.italic())
+            for w in widgets:
+                w.blockSignals(False)
+            self.canvas.font_family, self.canvas.font_size = f.family(), self.font_size_box.value()
+            self.canvas.font_bold, self.canvas.font_italic = f.bold(), f.italic()
+        except (RuntimeError, AttributeError):  # window is being torn down
+            pass
 
     def _sync_delete_action(self):
         try:
@@ -684,7 +802,7 @@ class EditorWindow(QMainWindow):
                 return e.ignore()
             if b == QMessageBox.Save:
                 self.save()
-        for sig, slot in ((self.scene.selectionChanged, self._sync_delete_action),):
+        for sig, slot in ((self.scene.selectionChanged, self._sync_delete_action), (self.scene.selectionChanged, self._sync_font_controls),):
             try:
                 sig.disconnect(slot)
             except (RuntimeError, TypeError):

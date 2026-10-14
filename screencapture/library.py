@@ -92,7 +92,7 @@ class LibraryWindow(QMainWindow):
         super().__init__()
         self.library = library
         self.setWindowTitle("ScreenCapture — Library")
-        self.resize(900, 600)
+        self.resize(1150, 650)
         self.list = QListWidget()
         self.list.setViewMode(QListView.IconMode)
         self.list.setResizeMode(QListView.Adjust)
@@ -109,7 +109,7 @@ class LibraryWindow(QMainWindow):
         tb.setMovable(False)
         self.addToolBar(tb)
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        tb.setIconSize(QSize(22, 22))
+        tb.setIconSize(QSize(icons.toolbar_pixels(), icons.toolbar_pixels()))
         self._capture_action = icons.tag(tb.addAction("Capture region", self.captureRequested.emit), "capture")
         icons.tag(tb.addAction("Capture screen", self.fullscreenRequested.emit), "screen")
         tb.addSeparator()

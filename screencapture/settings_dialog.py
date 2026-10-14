@@ -50,12 +50,20 @@ class SettingsDialog(QDialog):
             lambda _: theme.apply(QApplication.instance(), self.theme_box.currentData())  # live preview
         )
 
+        self._size0 = icons.size_name()
+        self.size_box = QComboBox()
+        for key, label in (("small", "Small"), ("medium", "Medium"), ("large", "Large")):
+            self.size_box.addItem(label, key)
+        self.size_box.setCurrentIndex(self.size_box.findData(self._size0))
+        self.size_box.currentIndexChanged.connect(lambda _: icons.apply_size(self.size_box.currentData()))  # live preview
+
         self.autostart_box = QCheckBox("Start ScreenCapture when I sign in (quietly, in the tray)")
         self.autostart_box.setEnabled(autostart.supported())
         self.autostart_box.setChecked(autostart.is_enabled())
 
         form = QFormLayout()
         form.addRow("Theme:", self.theme_box)
+        form.addRow("Icon size:", self.size_box)
         form.addRow("Startup:", self.autostart_box)
         form.addRow("Capture hotkey:", row)
         hint = QLabel(
@@ -100,8 +108,10 @@ class SettingsDialog(QDialog):
             if err:
                 return self._show(err, True)
         theme.save(self.theme_box.currentData())
+        icons.save_size(self.size_box.currentData())
         super().accept()
 
     def reject(self):
-        theme.apply(QApplication.instance(), self._theme0)  # undo the preview
+        theme.apply(QApplication.instance(), self._theme0)  # undo the previews
+        icons.apply_size(self._size0)
         super().reject()

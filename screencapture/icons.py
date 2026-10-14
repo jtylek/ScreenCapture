@@ -187,6 +187,24 @@ def _settings(p, fg, bg):  # gear
         _line(p, 12 + 7.6 * math.cos(a), 12 + 7.6 * math.sin(a), 12 + 9.6 * math.cos(a), 12 + 9.6 * math.sin(a))
 
 
+def _glyph(p, fg, text, bold=False, italic=False, serif=False):
+    f = QFont("serif" if serif else "sans-serif")
+    f.setPixelSize(19)
+    f.setBold(bold)
+    f.setItalic(italic)
+    p.setFont(f)
+    p.setPen(fg)
+    p.drawText(QRectF(2, 1, 20, 22), Qt.AlignCenter, text)
+
+
+def _bold(p, fg, bg):
+    _glyph(p, fg, "B", bold=True)
+
+
+def _italic(p, fg, bg):
+    _glyph(p, fg, "I", italic=True, serif=True)
+
+
 def _sun(p, fg, bg):
     import math
 
@@ -212,7 +230,7 @@ _DRAW = {
     "text": _text, "highlight": _highlight, "pixelate": _pixelate, "step": _step,
     "crop": _crop, "cutv": _cutv, "cuth": _cuth, "apply": _apply, "undo": _undo, "redo": _redo,
     "copy": _copy, "save": _save, "saveas": _saveas, "capture": _capture, "screen": _screen,
-    "edit": _edit, "settings": _settings, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
+    "edit": _edit, "settings": _settings, "bold": _bold, "italic": _italic, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
 }
 NAMES = tuple(_DRAW)
 _SIZE = 96  # drawn large, scaled down smoothly by Qt for any toolbar size / DPI
@@ -271,3 +289,40 @@ def refresh():
             name = a.property("icon_name")
             if name:
                 a.setIcon(icon(str(name)))
+
+
+# -- toolbar icon size (Settings → Icon size) ------------------------------------------------
+
+SIZES = {"small": 24, "medium": 32, "large": 40}
+DEFAULT_SIZE = "medium"
+SIZE_KEY = "appearance/icon_size"
+
+
+def size_name() -> str:
+    from PySide6.QtCore import QSettings
+
+    v = str(QSettings("ScreenCapture", "ScreenCapture").value(SIZE_KEY, DEFAULT_SIZE))
+    return v if v in SIZES else DEFAULT_SIZE
+
+
+def save_size(name: str):
+    from PySide6.QtCore import QSettings
+
+    s = QSettings("ScreenCapture", "ScreenCapture")
+    s.setValue(SIZE_KEY, name)
+    s.sync()
+
+
+def toolbar_pixels(name: str | None = None) -> int:
+    return SIZES.get(name or size_name(), SIZES[DEFAULT_SIZE])
+
+
+def apply_size(name: str | None = None):
+    """Resize the icons of every open toolbar."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtWidgets import QApplication, QToolBar
+
+    n = toolbar_pixels(name)
+    for w in QApplication.allWidgets():
+        if isinstance(w, QToolBar):
+            w.setIconSize(QSize(n, n))
