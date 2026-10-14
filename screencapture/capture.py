@@ -1,68 +1,66 @@
-"""Screen grabbing and the region/window selection overlay."""
+"""Screen grabbing and the selection overlay: one overlay window per monitor.
+
+Every monitor gets its own window at its own scale. A single window spanning monitors with different display
+scaling (e.g. 100% and 133%) is placed and scaled wrongly by Windows, which shifted captures."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
+from dataclasses import dataclass
+
+from PySide6.QtCore import QObject, QPoint, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 
-def native_rect_to_logical(r: QRect, screens=None) -> QRect:
-    """Window rectangles arrive in native (physical) desktop pixels; the overlay works in Qt's logical coordinates.
+@dataclass
+class ScreenShot:
+    image: QImage  # the monitor in native (physical) pixels
+    geometry: QRect  # Qt's logical geometry; its top-left is the monitor's native top-left, its size is scaled
+    dpr: float
+    screen: object = None  # the QScreen (None in tests)
 
-    Qt keeps every monitor's top-left at its native position and only scales its size, so a window on a
-    scaled or secondary monitor must be converted relative to *that* monitor's origin, not the desktop's.
-    `screens` is a list of (logical geometry, device pixel ratio); default: the real ones."""
-    if screens is None:
-        screens = [(s.geometry(), s.devicePixelRatio()) for s in QGuiApplication.screens()]
-    c = r.center()
-    for g, d in screens:
-        native = QRect(g.topLeft(), QSize(round(g.width() * d), round(g.height() * d)))
-        if native.contains(c):
-            return QRect(
-                g.x() + round((r.x() - g.x()) / d),
-                g.y() + round((r.y() - g.y()) / d),
-                round(r.width() / d),
-                round(r.height() / d),
-            )
-    return QRect(r)  # not on any known monitor: assume no scaling
+    @property
+    def native_rect(self) -> QRect:
+        return QRect(self.geometry.topLeft(), self.image.size())
 
 
-def grab_desktop() -> tuple[QImage, QRect, float]:
-    """All screens composed into one image. Returns (image, logical geometry, device pixel ratio)."""
-    screens = QGuiApplication.screens()
-    geo = screens[0].geometry()
-    for s in screens[1:]:
-        geo = geo.united(s.geometry())
-    dpr = max(s.devicePixelRatio() for s in screens)
-    img = QImage(int(geo.width() * dpr), int(geo.height() * dpr), QImage.Format_RGB32)
-    img.fill(Qt.black)
-    p = QPainter(img)
-    for s in screens:
-        g = s.geometry()
-        target = QRect(
-            int((g.x() - geo.x()) * dpr), int((g.y() - geo.y()) * dpr), int(g.width() * dpr), int(g.height() * dpr)
-        )
-        p.drawPixmap(target, s.grabWindow(0))
-    p.end()
-    return img, geo, dpr
+def grab_screens() -> list[ScreenShot]:
+    shots = []
+    for s in QGuiApplication.screens():
+        img = s.grabWindow(0).toImage().convertToFormat(QImage.Format_RGB32)
+        img.setDevicePixelRatio(1.0)
+        shots.append(ScreenShot(img, s.geometry(), s.devicePixelRatio(), s))
+    return shots
 
 
 def grab_current_screen() -> QImage:
-    screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-    return screen.grabWindow(0).toImage().convertToFormat(QImage.Format_RGB32)
+    """The monitor under the mouse, at full native resolution."""
+    shots = grab_screens()
+    pos = QCursor.pos()
+    return next((s.image for s in shots if s.geometry.contains(pos)), shots[0].image)
+
+
+def windows_for_screen(shot: ScreenShot, native_windows: list[QRect]) -> list[QRect]:
+    """Window rectangles (native desktop pixels, topmost first) -> this monitor's overlay widget coordinates."""
+    native, d = shot.native_rect, shot.dpr
+    out = []
+    for r in native_windows:
+        c = r.intersected(native)
+        if c.width() < 8 or c.height() < 8:
+            continue
+        out.append(QRect(round((c.x() - native.x()) / d), round((c.y() - native.y()) / d), round(c.width() / d), round(c.height() / d)))
+    return out
 
 
 class CaptureOverlay(QWidget):
-    """Frozen, dimmed desktop. Drag = region, click = window under the cursor, Esc/right click = cancel."""
+    """One monitor, frozen and dimmed. Drag = region, click = window under the cursor, Esc / right click = cancel."""
 
     captured = Signal(QImage)
     cancelled = Signal()
 
-    def __init__(self, desktop: QImage, geometry: QRect, dpr: float, windows: list[QRect]):
+    def __init__(self, shot: ScreenShot, native_windows: list[QRect]):
         super().__init__()
-        self._img, self._geo, self._dpr = desktop, geometry, dpr
-        # window rects arrive in native desktop pixels -> logical coordinates -> overlay widget coordinates
-        self._windows = [native_rect_to_logical(r).translated(-geometry.topLeft()) for r in windows]
+        self._shot = shot
+        self._windows = windows_for_screen(shot, native_windows)
         self._press: QPoint | None = None
         self._cur = QPoint()
         self._sel: QRect | None = None
@@ -71,13 +69,14 @@ class CaptureOverlay(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
         self.setCursor(Qt.CrossCursor)
         self.setMouseTracking(True)
-        self.setGeometry(geometry)
+        if shot.screen is not None:
+            self.setScreen(shot.screen)
+        self.setGeometry(shot.geometry)
 
-    def start(self):
-        self.show()
-        self.raise_()
-        self.activateWindow()
-        self.grabKeyboard()
+    def dismiss(self):
+        self.releaseKeyboard()
+        self.hide()
+        self.deleteLater()
 
     # -- events ------------------------------------------------------------------------------
 
@@ -115,32 +114,26 @@ class CaptureOverlay(QWidget):
         if self._done:
             return
         self._done = True
-        self.releaseKeyboard()
-        self.hide()
         if rect is None:
-            self.cancelled.emit()
-        else:
-            d = self._dpr
-            src = QRect(int(rect.x() * d), int(rect.y() * d), int(rect.width() * d), int(rect.height() * d))
-            out = self._img.copy(src)
-            out.setDevicePixelRatio(1.0)
-            self.captured.emit(out)
-        self.deleteLater()
+            return self.cancelled.emit()
+        d, img = self._shot.dpr, self._shot.image
+        src = QRect(round(rect.x() * d), round(rect.y() * d), round(rect.width() * d), round(rect.height() * d)).intersected(img.rect())
+        self.captured.emit(img.copy(src))
 
     # -- painting ----------------------------------------------------------------------------
 
     def paintEvent(self, _e):
         p = QPainter(self)
-        p.drawImage(self.rect(), self._img)
+        img, d = self._shot.image, self._shot.dpr
+        p.drawImage(self.rect(), img)
         p.fillRect(self.rect(), QColor(0, 0, 0, 110))
         box = self._sel if self._sel is not None else (self._hover if self._press is None else None)
         if box is not None:
-            d = self._dpr
             src = QRectF(box.x() * d, box.y() * d, box.width() * d, box.height() * d)
-            p.drawImage(QRectF(box), self._img, src)
+            p.drawImage(QRectF(box), img, src)
             p.setPen(QPen(QColor("#2f81f7"), 2))
             p.drawRect(box)
-            label = f"{int(box.width() * d)} × {int(box.height() * d)}"
+            label = f"{round(box.width() * d)} × {round(box.height() * d)}"
             p.setFont(QFont(self.font().family(), 10))
             w = p.fontMetrics().horizontalAdvance(label) + 12
             ty = box.top() - 24 if box.top() > 28 else box.top() + 4
@@ -148,3 +141,42 @@ class CaptureOverlay(QWidget):
             p.fillRect(tag, QColor(0, 0, 0, 200))
             p.setPen(Qt.white)
             p.drawText(tag, Qt.AlignCenter, label)
+
+
+class CaptureSession(QObject):
+    """Overlays on all monitors; the first selection (or a cancel on any of them) ends the session."""
+
+    captured = Signal(QImage)
+    cancelled = Signal()
+
+    def __init__(self, shots: list[ScreenShot], native_windows: list[QRect]):
+        super().__init__()
+        self.overlays = [CaptureOverlay(s, native_windows) for s in shots]
+        self._done = False
+        for o in self.overlays:
+            o.captured.connect(self._on_captured)
+            o.cancelled.connect(self._on_cancelled)
+
+    def start(self):
+        for o in self.overlays:
+            o.show()
+            o.raise_()
+        under_mouse = next((o for o in self.overlays if o.geometry().contains(QCursor.pos())), self.overlays[0])
+        under_mouse.activateWindow()
+        under_mouse.grabKeyboard()  # Esc cancels
+
+    def _dismiss_all(self):
+        for o in self.overlays:
+            o.dismiss()
+
+    def _on_captured(self, img: QImage):
+        if not self._done:
+            self._done = True
+            self._dismiss_all()
+            self.captured.emit(img)
+
+    def _on_cancelled(self):
+        if not self._done:
+            self._done = True
+            self._dismiss_all()
+            self.cancelled.emit()

@@ -293,7 +293,7 @@ def refresh():
 
 # -- toolbar icon size (Settings → Icon size) ------------------------------------------------
 
-SIZES = {"small": 24, "medium": 32, "large": 40}
+SIZES = {"small": 22, "medium": 28, "large": 36}
 DEFAULT_SIZE = "medium"
 SIZE_KEY = "appearance/icon_size"
 

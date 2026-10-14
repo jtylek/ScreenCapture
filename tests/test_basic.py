@@ -337,40 +337,76 @@ def test_icon_size_setting(qapp, tmp_path):
     from screencapture.hotkey import HotkeyManager
     from screencapture.settings_dialog import SettingsDialog
 
-    assert icons.size_name() == "medium" and icons.toolbar_pixels() == 32  # bigger than the old 24 by default
+    assert icons.size_name() == "medium" and icons.toolbar_pixels() == 28
     ed = EditorWindow(_img(300, 200), Library(tmp_path))
     ed.show()
     bars = ed.findChildren(QToolBar)
-    assert len(bars) == 2 and all(b.iconSize().width() == 32 for b in bars)
+    assert len(bars) == 2 and all(b.iconSize().width() == 28 for b in bars)
     dlg = SettingsDialog(HotkeyManager())
     dlg.size_box.setCurrentIndex(dlg.size_box.findData("large"))
-    assert all(b.iconSize().width() == 40 for b in bars)  # live preview
+    assert all(b.iconSize().width() == 36 for b in bars)  # live preview
     dlg.reject()
-    assert all(b.iconSize().width() == 32 for b in bars) and icons.size_name() == "medium"  # reverted
+    assert all(b.iconSize().width() == 28 for b in bars) and icons.size_name() == "medium"  # reverted
     dlg2 = SettingsDialog(HotkeyManager())
     dlg2.size_box.setCurrentIndex(dlg2.size_box.findData("small"))
     dlg2.accept()
-    assert icons.size_name() == "small" and all(b.iconSize().width() == 24 for b in bars)
+    assert icons.size_name() == "small" and all(b.iconSize().width() == 22 for b in bars)
 
 
-def test_window_rect_conversion_on_scaled_and_secondary_monitors(qapp):
+def test_windows_are_mapped_per_monitor(qapp):
     from PySide6.QtCore import QRect
+    from PySide6.QtGui import QImage
 
-    from screencapture.capture import native_rect_to_logical as conv
+    from screencapture.capture import ScreenShot, windows_for_screen
 
-    # primary 1920x1080 @125% at the origin (logical 1536x864), secondary 1920x1080 @100% to its right
-    two = [(QRect(0, 0, 1536, 864), 1.25), (QRect(1920, 0, 1920, 1080), 1.0)]
-    assert conv(QRect(100, 100, 1000, 500), two) == QRect(80, 80, 800, 400)
-    assert conv(QRect(2000, 100, 800, 600), two) == QRect(2000, 100, 800, 600)  # unscaled secondary: unchanged
-    # secondary monitor at 150%: logical 1280x720 at native x=1920. The old "x / dpr" maths put this window ~640 px
-    # too far left (the shifted capture with a black strip), the monitor's own origin must be used.
-    mixed = [(QRect(0, 0, 1920, 1080), 1.0), (QRect(1920, 0, 1280, 720), 1.5)]
-    assert conv(QRect(2000, 150, 900, 600), mixed) == QRect(1920 + 53, 100, 600, 400)
-    assert conv(QRect(2000, 150, 900, 600), mixed).x() != round(2000 / 1.5)
-    # a monitor to the left of the primary (negative origin)
-    left = [(QRect(-1920, 0, 1920, 1080), 1.0), (QRect(0, 0, 1536, 864), 1.25)]
-    assert conv(QRect(-1800, 50, 600, 400), left) == QRect(-1800, 50, 600, 400)
-    assert conv(QRect(500, 500, 250, 125), []) == QRect(500, 500, 250, 125)  # unknown monitor: left alone
+    def shot(geometry, dpr):
+        img = QImage(1920, 1080, QImage.Format_RGB32)  # every monitor is 1920x1080 native
+        return ScreenShot(img, geometry, dpr)
+
+    # the reported setup: primary on the right at 100% (native 0..1920), a 133% monitor on the LEFT (native -1920..0).
+    # Qt keeps its top-left at native -1920 and scales its size to 1440x810, leaving a gap in logical space.
+    left = shot(QRect(-1920, 0, 1440, 810), 1.3333333)
+    right = shot(QRect(0, 0, 1920, 1080), 1.0)
+    chrome = QRect(-1920, 0, 1920, 1040)  # maximised Chrome on the left monitor, native pixels
+    assert windows_for_screen(left, [chrome]) == [QRect(0, 0, 1440, 780)]  # fills the left overlay exactly
+    assert windows_for_screen(right, [chrome]) == []  # not on the right monitor
+    # a window on the right monitor is unaffected by the left monitor's scaling
+    assert windows_for_screen(right, [QRect(200, 100, 800, 600)]) == [QRect(200, 100, 800, 600)]
+    # a window straddling two monitors is clipped to each
+    both = QRect(-500, 100, 1000, 400)
+    assert windows_for_screen(left, [both]) == [QRect(round(1420 / 1.3333333), round(100 / 1.3333333), round(500 / 1.3333333), round(400 / 1.3333333))]
+    assert windows_for_screen(right, [both]) == [QRect(0, 100, 500, 400)]
+    # tiny slivers are ignored
+    assert windows_for_screen(right, [QRect(-1000, 0, 1004, 500)]) == []
+
+
+def test_overlay_crops_native_pixels_on_a_scaled_monitor(qapp):
+    from PySide6.QtCore import QPoint, QRect
+    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtTest import QTest
+
+    from screencapture.capture import CaptureOverlay, CaptureSession, ScreenShot
+
+    img = QImage(1920, 1080, QImage.Format_RGB32)
+    img.fill(QColor("blue"))
+    for x in range(400, 800):
+        for y in range(300, 600):
+            img.setPixelColor(x, y, QColor("red"))
+    shot = ScreenShot(img, QRect(-1920, 0, 1440, 810), 1.3333333)
+    got = []
+    session = CaptureSession([shot], [QRect(-1920 + 300, 225, 600, 450)])
+    session.captured.connect(got.append)
+    ov = session.overlays[0]
+    ov.show()
+    # drag the red block as the user sees it: widget 300..600 x 225..450 (= native 400..800 x 300..600)
+    QTest.mousePress(ov, Qt.LeftButton, pos=QPoint(300, 225))
+    QTest.mouseMove(ov, QPoint(600, 450))
+    QTest.mouseRelease(ov, Qt.LeftButton, pos=QPoint(600, 450))
+    assert len(got) == 1
+    out = got[0]
+    assert abs(out.width() - 400) <= 2 and abs(out.height() - 300) <= 2  # full native resolution, not logical
+    assert out.pixelColor(out.width() // 2, out.height() // 2) == QColor("red")
+    assert out.pixelColor(1, 1) == QColor("red") and out.pixelColor(out.width() - 2, out.height() - 2) == QColor("red")
 
 
 def test_windows_stay_on_the_screen(qapp, tmp_path):

@@ -12,7 +12,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from . import diagnostics, icons, theme
-from .capture import CaptureOverlay, grab_current_screen, grab_desktop
+from .capture import CaptureSession, grab_current_screen, grab_screens
 from .editor import EditorWindow
 from .hotkey import HotkeyManager
 from .settings_dialog import SettingsDialog
@@ -37,7 +37,7 @@ class ScreenCapture(QObject):
         self.library_window.settingsRequested.connect(self.open_settings)
         self.editors: dict[Path, EditorWindow] = {}
         self._hidden: list = []
-        self._overlay: CaptureOverlay | None = None
+        self._overlay: CaptureSession | None = None
         self.tray = self._make_tray()
         self.server = self._make_server()
         self.hotkeys = HotkeyManager()
@@ -129,12 +129,11 @@ class ScreenCapture(QObject):
         QTimer.singleShot(250, self._start_overlay)  # let the compositor repaint without our windows
 
     def _start_overlay(self):
-        desktop, geo, dpr = grab_desktop()
-        ov = CaptureOverlay(desktop, geo, dpr, window_rects())
-        ov.captured.connect(self._on_captured)
-        ov.cancelled.connect(self._on_cancelled)
-        self._overlay = ov
-        ov.start()
+        session = CaptureSession(grab_screens(), window_rects())
+        session.captured.connect(self._on_captured)
+        session.cancelled.connect(self._on_cancelled)
+        self._overlay = session
+        session.start()
 
     def capture_fullscreen(self, delay_ms: int = 0):
         self._hide_own_windows()
