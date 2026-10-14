@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=ScreenCapture
+Comment=Capture, annotate and crop screenshots
+Exec=@BIN@ --library
+Icon=@ICON@
+Terminal=false
+Categories=Graphics;Utility;
+StartupNotify=false
+Actions=capture;
+
+[Desktop Action capture]
+Name=Capture region / window
+Exec=@BIN@ --capture

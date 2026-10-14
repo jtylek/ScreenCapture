@@ -1,0 +1,537 @@
+"""Annotation editor: canvas, undo commands and the editor window."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QLineF, QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QColor,
+    QGuiApplication,
+    QIcon,
+    QImage,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QUndoCommand,
+    QUndoStack,
+)
+from PySide6.QtWidgets import (
+    QColorDialog,
+    QFileDialog,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QSpinBox,
+    QToolBar,
+)
+
+from .items import (
+    MOVABLE,
+    ArrowItem,
+    BoxItem,
+    CropItem,
+    HighlightItem,
+    OvalItem,
+    PixelateItem,
+    StepItem,
+    TextItem,
+)
+from .library import Library
+
+TOOLS = [
+    ("select", "Select"),
+    ("rect", "Rectangle"),
+    ("ellipse", "Ellipse"),
+    ("arrow", "Arrow"),
+    ("line", "Line"),
+    ("text", "Text"),
+    ("highlight", "Highlight"),
+    ("pixelate", "Blur"),
+    ("step", "Step"),
+    ("crop", "Crop"),
+]
+
+
+class CanvasScene(QGraphicsScene):
+    def __init__(self, image: QImage):
+        super().__init__()
+        self.base_item = QGraphicsPixmapItem()
+        self.base_item.setZValue(-1000)
+        self.addItem(self.base_item)
+        self.set_base(QPixmap.fromImage(image))
+
+    def set_base(self, pm: QPixmap):
+        self.base_image = pm.toImage()
+        self.base_item.setPixmap(pm)
+        self.setSceneRect(QRectF(pm.rect()))
+
+    def annotations(self):
+        return [i for i in self.items() if i is not self.base_item and i.parentItem() is None and not isinstance(i, CropItem)]
+
+
+# -- undo commands ---------------------------------------------------------------------------
+
+
+class AddCommand(QUndoCommand):
+    def __init__(self, scene, item):
+        super().__init__("Add")
+        self.scene, self.item = scene, item
+
+    def redo(self):
+        if self.item.scene() is not self.scene:
+            self.scene.addItem(self.item)
+
+    def undo(self):
+        if self.item.scene() is self.scene:
+            self.scene.removeItem(self.item)
+
+
+class DeleteCommand(QUndoCommand):
+    def __init__(self, scene, items):
+        super().__init__("Delete")
+        self.scene, self.items = scene, list(items)
+
+    def redo(self):
+        for i in self.items:
+            if i.scene() is self.scene:
+                self.scene.removeItem(i)
+
+    def undo(self):
+        for i in self.items:
+            if i.scene() is not self.scene:
+                self.scene.addItem(i)
+
+
+class MoveCommand(QUndoCommand):
+    def __init__(self, moves):  # [(item, old_pos, new_pos)]
+        super().__init__("Move")
+        self.moves = moves
+
+    def redo(self):
+        for item, _old, new in self.moves:
+            item.setPos(new)
+
+    def undo(self):
+        for item, old, _new in self.moves:
+            item.setPos(old)
+
+
+class CropCommand(QUndoCommand):
+    def __init__(self, scene: CanvasScene, rect):
+        super().__init__("Crop")
+        self.scene, self.rect = scene, rect
+        self.old_pixmap = None
+
+    def redo(self):
+        self.old_pixmap = self.scene.base_item.pixmap()
+        self.scene.set_base(self.old_pixmap.copy(self.rect))
+        for i in self.scene.annotations():
+            i.moveBy(-self.rect.x(), -self.rect.y())
+
+    def undo(self):
+        self.scene.set_base(self.old_pixmap)
+        for i in self.scene.annotations():
+            i.moveBy(self.rect.x(), self.rect.y())
+
+
+# -- canvas ----------------------------------------------------------------------------------
+
+
+class Canvas(QGraphicsView):
+    cropActive = Signal(bool)
+
+    def __init__(self, scene: CanvasScene, stack: QUndoStack):
+        super().__init__(scene)
+        self.stack = stack
+        self.tool = "select"
+        self.color = QColor("#e53935")
+        self.width = 4
+        self._item = None
+        self._start = QPointF()
+        self._crop: CropItem | None = None
+        self._crop_drag = None
+        self._moving = None
+        self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self.setBackgroundBrush(QColor(45, 45, 48))
+        self.setAlignment(Qt.AlignCenter)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+
+    # state ---------------------------------------------------------------------------------
+
+    def set_tool(self, tool: str):
+        self.tool = tool
+        if tool != "crop":
+            self.discard_crop()
+        self.viewport().setCursor(Qt.ArrowCursor if tool == "select" else Qt.CrossCursor)
+
+    def editing_text(self) -> bool:
+        f = self.scene().focusItem()
+        return isinstance(f, TextItem) and f.textInteractionFlags() != Qt.NoTextInteraction
+
+    def pen(self) -> QPen:
+        return QPen(self.color, self.width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+
+    def render_image(self) -> QImage:
+        sc = self.scene()
+        sc.setFocusItem(None)
+        sc.clearSelection()
+        if self._crop:
+            self._crop.hide()
+        img = QImage(sc.sceneRect().size().toSize(), QImage.Format_RGB32)
+        img.fill(Qt.white)
+        p = QPainter(img)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        sc.render(p, QRectF(img.rect()), sc.sceneRect())
+        p.end()
+        if self._crop:
+            self._crop.show()
+        return img
+
+    # crop ----------------------------------------------------------------------------------
+
+    def discard_crop(self):
+        if self._crop:
+            self.scene().removeItem(self._crop)
+            self._crop = None
+            self.cropActive.emit(False)
+
+    def apply_crop(self):
+        if not self._crop:
+            return
+        r = self._crop.rect().intersected(self.scene().sceneRect()).toRect()
+        self.discard_crop()
+        if r.width() >= 2 and r.height() >= 2:
+            self.stack.push(CropCommand(self.scene(), r))
+
+    def _crop_hit(self, p: QPointF):
+        r = self._crop.rect()
+        m = 8 / max(self.transform().m11(), 0.01)
+        near = (abs(p.x() - r.left()) < m, abs(p.x() - r.right()) < m, abs(p.y() - r.top()) < m, abs(p.y() - r.bottom()) < m)
+        inside = r.adjusted(-m, -m, m, m).contains(p)
+        if inside and any(near):
+            return ("edge", *near)
+        if r.contains(p):
+            return ("move",)
+        return None
+
+    def _crop_update(self, p: QPointF):
+        mode, start, orig = self._crop_drag
+        bounds = self.scene().sceneRect()
+        if mode[0] == "new":
+            r = QRectF(start, p).normalized()
+        elif mode[0] == "move":
+            d = p - start
+            r = orig.translated(d)
+            r.moveLeft(min(max(r.left(), bounds.left()), bounds.right() - r.width()))
+            r.moveTop(min(max(r.top(), bounds.top()), bounds.bottom() - r.height()))
+        else:
+            _, l, rt, t, b = mode
+            r = QRectF(orig)
+            if l:
+                r.setLeft(p.x())
+            if rt:
+                r.setRight(p.x())
+            if t:
+                r.setTop(p.y())
+            if b:
+                r.setBottom(p.y())
+        self._crop.set_rect(r.normalized().intersected(bounds))
+
+    # items ---------------------------------------------------------------------------------
+
+    def _make(self, p: QPointF):
+        t = self.tool
+        if t == "rect":
+            return self._styled(BoxItem(QRectF(p, p)))
+        if t == "ellipse":
+            return self._styled(OvalItem(QRectF(p, p)))
+        if t in ("arrow", "line"):
+            return ArrowItem(QLineF(p, p), self.pen(), head=(t == "arrow"))
+        if t == "highlight":
+            it = HighlightItem(QRectF(p, p))
+            it.setBrush(QColor(255, 235, 0, 110))
+            it.setFlags(it.flags() | MOVABLE)
+            return it
+        if t == "pixelate":
+            it = PixelateItem(QRectF(p, p))
+            it.setFlags(it.flags() | MOVABLE)
+            return it
+        return None
+
+    def _styled(self, item):
+        item.setPen(self.pen())
+        item.setFlags(item.flags() | MOVABLE)
+        return item
+
+    def _update(self, p: QPointF):
+        it, s = self._item, self._start
+        if isinstance(it, ArrowItem):
+            it.setLine(s.x(), s.y(), p.x(), p.y())
+        else:
+            it.setRect(QRectF(s, p).normalized())
+
+    def _too_small(self, it) -> bool:
+        if isinstance(it, ArrowItem):
+            return it.line().length() < 4
+        r = it.rect()
+        return r.width() < 4 and r.height() < 4
+
+    def _add_text(self, p: QPointF):
+        it = TextItem(self.color, 16 + self.width * 2, lambda i: self.stack.push(AddCommand(self.scene(), i)))
+        it.setPos(p)
+        self.scene().addItem(it)
+        it.start_edit()
+
+    def _add_step(self, p: QPointF):
+        n = sum(isinstance(i, StepItem) for i in self.scene().items()) + 1
+        it = StepItem(n, self.color)
+        it.setPos(p)
+        self.stack.push(AddCommand(self.scene(), it))
+
+    # events --------------------------------------------------------------------------------
+
+    def mousePressEvent(self, e):
+        if e.button() != Qt.LeftButton:
+            return super().mousePressEvent(e)
+        p = self.mapToScene(e.position().toPoint())
+        if self.tool == "select":
+            super().mousePressEvent(e)
+            self._moving = {i: i.pos() for i in self.scene().selectedItems()}
+            return
+        self.scene().setFocusItem(None)
+        if self.tool == "crop":
+            hit = self._crop_hit(p) if self._crop else None
+            if hit is None:
+                self.discard_crop()
+                self._crop = CropItem(QRectF(p, p))
+                self.scene().addItem(self._crop)
+                hit = ("new",)
+            self._crop_drag = (hit, p, self._crop.rect())
+            return
+        if self.tool == "text":
+            under = self.scene().itemAt(p, self.transform())
+            if isinstance(under, TextItem):
+                under.start_edit()
+            else:
+                self._add_text(p)
+            return
+        if self.tool == "step":
+            return self._add_step(p)
+        self._start = p
+        self._item = self._make(p)
+        if self._item is not None:
+            self.scene().addItem(self._item)
+
+    def mouseMoveEvent(self, e):
+        p = self.mapToScene(e.position().toPoint())
+        if self._crop_drag:
+            return self._crop_update(p)
+        if self._item is not None:
+            return self._update(p)
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if self._crop_drag:
+            self._crop_drag = None
+            r = self._crop.rect()
+            if r.width() < 4 or r.height() < 4:
+                self.discard_crop()
+            else:
+                self.cropActive.emit(True)
+            return
+        if self._item is not None:
+            it, self._item = self._item, None
+            if self._too_small(it):
+                self.scene().removeItem(it)
+            else:
+                self.stack.push(AddCommand(self.scene(), it))
+            return
+        super().mouseReleaseEvent(e)
+        if self._moving:
+            moves = [(i, old, i.pos()) for i, old in self._moving.items() if i.pos() != old]
+            self._moving = None
+            if moves:
+                self.stack.push(MoveCommand(moves))
+
+    def keyPressEvent(self, e):
+        if self.editing_text():
+            if e.key() == Qt.Key_Escape:
+                self.scene().setFocusItem(None)
+            else:
+                super().keyPressEvent(e)
+            return
+        if e.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+            sel = [i for i in self.scene().selectedItems() if i is not self.scene().base_item]
+            if sel:
+                self.stack.push(DeleteCommand(self.scene(), sel))
+            return
+        if e.key() in (Qt.Key_Return, Qt.Key_Enter) and self._crop:
+            return self.apply_crop()
+        if e.key() == Qt.Key_Escape:
+            self.discard_crop()
+            self.scene().clearSelection()
+            return
+        super().keyPressEvent(e)
+
+    def wheelEvent(self, e):
+        if e.modifiers() & Qt.ControlModifier:
+            f = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
+            self.scale(f, f)
+        else:
+            super().wheelEvent(e)
+
+
+# -- window ----------------------------------------------------------------------------------
+
+
+def _swatch(color: QColor) -> QIcon:
+    pm = QPixmap(16, 16)
+    pm.fill(color)
+    return QIcon(pm)
+
+
+class EditorWindow(QMainWindow):
+    closed = Signal(object)
+
+    def __init__(self, image: QImage, library: Library, path: Path | None = None):
+        super().__init__()
+        self.library, self.path = library, path
+        self.stack = QUndoStack(self)
+        self.scene = CanvasScene(image)
+        self.canvas = Canvas(self.scene, self.stack)
+        self.setCentralWidget(self.canvas)
+        self.setWindowTitle("ScreenCapture")
+        self._build_toolbar()
+        self.size_label = QLabel()
+        self.statusBar().addPermanentWidget(self.size_label)
+        self.scene.sceneRectChanged.connect(self._update_size)
+        self.stack.cleanChanged.connect(lambda _: self._update_title())
+        self._update_size()
+        self._update_title()
+        avail = QGuiApplication.primaryScreen().availableGeometry()
+        self.setMinimumWidth(820)
+        self.resize(
+            max(820, min(image.width() + 40, int(avail.width() * 0.9))), min(image.height() + 120, int(avail.height() * 0.9))
+        )
+        QTimer.singleShot(0, self._fit)
+
+    def _build_toolbar(self):
+        tb = QToolBar("Tools", self)
+        tb.setMovable(False)
+        tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        tb.setIconSize(QSize(16, 16))
+        self.addToolBar(tb)
+        group = QActionGroup(self)
+        for key, label in TOOLS:
+            a = QAction(label, self, checkable=True)
+            a.triggered.connect(lambda _=False, k=key: self.canvas.set_tool(k))
+            group.addAction(a)
+            tb.addAction(a)
+            if key == "select":
+                a.setChecked(True)
+        tb.addSeparator()
+        self.color_action = QAction(_swatch(self.canvas.color), "Color", self)
+        self.color_action.triggered.connect(self._pick_color)
+        tb.addAction(self.color_action)
+        self.width_box = QSpinBox()
+        self.width_box.setRange(1, 40)
+        self.width_box.setValue(self.canvas.width)
+        self.width_box.setSuffix(" px")
+        self.width_box.valueChanged.connect(lambda v: setattr(self.canvas, "width", v))
+        tb.addWidget(self.width_box)
+        tb.addSeparator()
+
+        self.apply_crop_action = self._act(tb, "Apply crop", None, self.canvas.apply_crop)
+        self.apply_crop_action.setEnabled(False)
+        self.canvas.cropActive.connect(self.apply_crop_action.setEnabled)
+        undo = self.stack.createUndoAction(self, "Undo")
+        undo.setShortcut(QKeySequence.Undo)
+        redo = self.stack.createRedoAction(self, "Redo")
+        redo.setShortcut(QKeySequence.Redo)
+        tb.addAction(undo)
+        tb.addAction(redo)
+        tb.addSeparator()
+        self._act(tb, "Copy", "Ctrl+Shift+C", self.copy_to_clipboard)
+        self._act(tb, "Save", QKeySequence.Save, self.save)
+        self._act(tb, "Save as…", QKeySequence.SaveAs, self.save_as)
+
+    def _act(self, tb, text, shortcut, slot):
+        a = QAction(text, self)
+        if shortcut:
+            a.setShortcut(QKeySequence(shortcut))
+        a.triggered.connect(lambda _=False: slot())
+        tb.addAction(a)
+        return a
+
+    # actions -------------------------------------------------------------------------------
+
+    def _pick_color(self):
+        c = QColorDialog.getColor(self.canvas.color, self, "Annotation color")
+        if c.isValid():
+            self.canvas.color = c
+            self.color_action.setIcon(_swatch(c))
+
+    def image(self) -> QImage:
+        return self.canvas.render_image()
+
+    def copy_to_clipboard(self):
+        QGuiApplication.clipboard().setImage(self.image())
+        self.statusBar().showMessage("Copied to clipboard", 3000)
+
+    def save(self) -> bool:
+        img = self.image()
+        if self.path is None:
+            self.path = self.library.add(img)
+        else:
+            self.library.save(self.path, img)
+        self.stack.setClean()
+        self.statusBar().showMessage(f"Saved to library: {self.path.name}", 3000)
+        return True
+
+    def save_as(self):
+        start = str(Path.home() / "Pictures" / (self.path.name if self.path else "capture.png"))
+        fn, _ = QFileDialog.getSaveFileName(self, "Save image", start, "PNG image (*.png);;JPEG image (*.jpg)")
+        if fn:
+            self.image().save(fn)
+            self.statusBar().showMessage(f"Saved {fn}", 3000)
+
+    # window plumbing -----------------------------------------------------------------------
+
+    def _fit(self):
+        r = self.scene.sceneRect()
+        vp = self.canvas.viewport().size()
+        if r.width() > vp.width() or r.height() > vp.height():
+            self.canvas.fitInView(r, Qt.KeepAspectRatio)
+
+    def _update_size(self, *_):
+        r = self.scene.sceneRect()
+        self.size_label.setText(f"{int(r.width())} × {int(r.height())}")
+
+    def _update_title(self):
+        try:
+            clean = self.stack.isClean()
+        except RuntimeError:  # stack already destroyed while the window is being torn down
+            return
+        name = self.path.name if self.path else "untitled"
+        self.setWindowTitle(f"{name}{'' if clean else ' *'} — ScreenCapture")
+
+    def closeEvent(self, e):
+        if not self.stack.isClean():
+            b = QMessageBox.question(
+                self,
+                "ScreenCapture",
+                "Save changes to the library?",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            )
+            if b == QMessageBox.Cancel:
+                return e.ignore()
+            if b == QMessageBox.Save:
+                self.save()
+        self.closed.emit(self)
+        e.accept()
