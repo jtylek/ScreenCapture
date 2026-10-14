@@ -16,32 +16,21 @@ and keep your screenshots in a library. Output is flattened PNG.
 
 ### Linux (Mint / Ubuntu)
 
-Download `screencapture-<version>.tar.gz` from the [Releases](https://github.com/jtylek/ScreenCapture/releases)
-page, then:
-
 ```bash
-# once: system packages
 sudo apt install python3-venv libxcb-cursor0
-
-# extract and install (replace 0.2.0 with the version you downloaded)
-tar xzf screencapture-0.2.0-linux.tar.gz
-cd screencapture-0.2.0
-./install.sh --autostart
+wget -qO- https://github.com/jtylek/ScreenCapture/releases/latest/download/screencapture-linux.tar.gz | tar xz
+cd screencapture && ./install.sh --autostart
 ```
 
-Or install straight from the repository instead of the tarball:
-`git clone https://github.com/jtylek/ScreenCapture && cd ScreenCapture && ./install.sh --autostart`.
+That's it: start **ScreenCapture** from the menu (or run `screencapture`). To update, run the same commands again.
 
-- `install.sh` installs for your user only, no `sudo`. It creates a private Python environment in
-  `~/.local/share/screencapture` (dependencies are downloaded, so you need to be online), a `screencapture`
-  command in `~/.local/bin`, and a "ScreenCapture" menu entry.
+- The installer works for your user only, no `sudo`. It sets up a private Python environment in
+  `~/.local/share/screencapture` (needs internet), a `screencapture` command in `~/.local/bin` and a menu entry.
 - `--autostart` is optional: it starts the app quietly in the tray at login, which the capture hotkey needs.
-- Start it from the menu or run `screencapture`. If the command is not found right after installing, log out and
-  back in so `~/.local/bin` is on your PATH.
+- If the `screencapture` command is not found right after installing, log out and back in.
 - Set your capture hotkey in **Library → Settings** (gear icon); see [Settings](#settings) for using PrintScreen.
   Alternative that always works: add a custom system shortcut with the command `~/.local/bin/screencapture --capture`.
-- **Update:** download the newer tarball and run `./install.sh` again.
-- **Uninstall:** run `./uninstall.sh` from the extracted folder (`--purge` also deletes your saved screenshots).
+- **Uninstall:** `cd screencapture && ./uninstall.sh` (`--purge` also deletes your saved screenshots).
 
 ### Windows
 

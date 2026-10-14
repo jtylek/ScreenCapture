@@ -37,14 +37,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Source bundle with install.sh
         run: |
-          v=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
           mkdir -p dist
-          tar czf "dist/screencapture-$v-linux.tar.gz" --transform "s,^,screencapture-$v/," \
+          tar czf dist/screencapture-linux.tar.gz --transform "s,^,screencapture/," \
             install.sh uninstall.sh pyproject.toml README.md screencapture packaging
       - uses: actions/upload-artifact@v4
         with:
           name: linux-bundle
-          path: dist/*.tar.gz
+          path: dist/screencapture-linux.tar.gz
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
