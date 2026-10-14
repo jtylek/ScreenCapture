@@ -1,5 +1,5 @@
 # Builds dist\ScreenCapture\ScreenCapture.exe (PyInstaller) and, if Inno Setup is installed,
-# dist\ScreenCapture-Setup-<version>.exe.   Run from the repository root in PowerShell:
+# dist\ScreenCapture-Setup.exe.   Run from the repository root in PowerShell:
 #   powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
 $ErrorActionPreference = "Stop"
 $version = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
