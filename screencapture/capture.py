@@ -4,9 +4,11 @@ Every monitor gets its own window at its own scale. A single window spanning mon
 scaling (e.g. 100% and 133%) is placed and scaled wrongly by Windows, which shifted captures."""
 from __future__ import annotations
 
+import sys
+import time
 from dataclasses import dataclass
 
-from PySide6.QtCore import QObject, QPoint, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -49,6 +51,18 @@ def windows_for_screen(shot: ScreenShot, native_windows: list[QRect]) -> list[QR
             continue
         out.append(QRect(round((c.x() - native.x()) / d), round((c.y() - native.y()) / d), round(c.width() / d), round(c.height() / d)))
     return out
+
+
+def _escape_down() -> bool:
+    """Is Esc physically down right now, even if no window of ours has the focus? Windows only."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.user32.GetAsyncKeyState(0x1B) & 0x8000)
+    except Exception:
+        return False
 
 
 class CaptureOverlay(QWidget):
@@ -149,6 +163,10 @@ class CaptureSession(QObject):
     captured = Signal(QImage)
     cancelled = Signal()
 
+    IDLE_TIMEOUT_MS = 60_000  # no mouse activity for this long: give up, so overlays can never stay forever
+    HEARTBEAT_MS = 1000
+    CLOCK_JUMP_S = 5  # a heartbeat this late means the computer slept (or the clock jumped): cancel
+
     def __init__(self, shots: list[ScreenShot], native_windows: list[QRect]):
         super().__init__()
         self.overlays = [CaptureOverlay(s, native_windows) for s in shots]
@@ -156,16 +174,77 @@ class CaptureSession(QObject):
         for o in self.overlays:
             o.captured.connect(self._on_captured)
             o.cancelled.connect(self._on_cancelled)
+        # Failsafes: the overlays are always on top of everything, so if one never gets keyboard focus (seen after
+        # waking from sleep on Windows) there must still be a way out.
+        self._idle = QTimer(self)
+        self._idle.setSingleShot(True)
+        self._idle.setInterval(self.IDLE_TIMEOUT_MS)
+        self._idle.timeout.connect(self._on_cancelled)
+        self._heartbeat = QTimer(self)
+        self._heartbeat.setInterval(self.HEARTBEAT_MS)
+        self._heartbeat.timeout.connect(self._tick)
+        self._last_tick = time.monotonic()
+        self._esc_was_down = _escape_down()  # ignore an Esc that is already held when the capture starts
 
     def start(self):
         for o in self.overlays:
             o.show()
             o.raise_()
+        self._focus()
+        QTimer.singleShot(150, self._focus)  # Windows may refuse the first activation; try again
+        app = QGuiApplication.instance()
+        app.installEventFilter(self)  # Esc / right click cancel whichever window has the focus
+        app.screenAdded.connect(self._on_cancelled)
+        app.screenRemoved.connect(self._on_cancelled)
+        app.primaryScreenChanged.connect(self._on_cancelled)
+        self._last_tick = time.monotonic()
+        self._idle.start()
+        self._heartbeat.start()
+
+    def _focus(self):
+        if self._done:
+            return
         under_mouse = next((o for o in self.overlays if o.geometry().contains(QCursor.pos())), self.overlays[0])
         under_mouse.activateWindow()
         under_mouse.grabKeyboard()  # Esc cancels
 
+    def eventFilter(self, obj, e):
+        t = e.type()
+        if t == QEvent.KeyPress and e.key() == Qt.Key_Escape:
+            self._on_cancelled()
+            return True
+        if t == QEvent.MouseButtonPress and e.button() == Qt.RightButton:
+            self._on_cancelled()
+            return True
+        if t in (QEvent.MouseMove, QEvent.MouseButtonPress) and self._idle.isActive():
+            self._idle.start()
+        return False
+
+    def _tick(self):
+        now = time.monotonic()
+        late = now - self._last_tick - self.HEARTBEAT_MS / 1000
+        self._last_tick = now
+        if late > self.CLOCK_JUMP_S:
+            return self._on_cancelled()
+        down = _escape_down()  # works without keyboard focus (Windows only)
+        if down and not self._esc_was_down:
+            return self._on_cancelled()
+        self._esc_was_down = down
+
+    def _stop_failsafes(self):
+        self._idle.stop()
+        self._heartbeat.stop()
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+            for sig in (app.screenAdded, app.screenRemoved, app.primaryScreenChanged):
+                try:
+                    sig.disconnect(self._on_cancelled)
+                except (RuntimeError, TypeError):
+                    pass
+
     def _dismiss_all(self):
+        self._stop_failsafes()
         for o in self.overlays:
             o.dismiss()
 
@@ -175,7 +254,7 @@ class CaptureSession(QObject):
             self._dismiss_all()
             self.captured.emit(img)
 
-    def _on_cancelled(self):
+    def _on_cancelled(self, *_):
         if not self._done:
             self._done = True
             self._dismiss_all()
