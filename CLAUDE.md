@@ -12,6 +12,9 @@ documentation; keep it accurate when behaviour changes, and don't mention other 
 `autostart.py`, `theme.py`, `icons.py`, `settings_dialog.py`, `winutil.py` (window placement), `diagnostics.py` (log, runtime check). `packaging/` (Windows installer, launcher, icons),
 `install.sh` / `uninstall.sh` (Linux), `.github/workflows/release.yml`.
 
+Supported platforms: Windows 10/11 and Linux/X11. NOT supported: Wayland, macOS (no window enumeration, global hotkey,
+autostart or packaging there; note macOS already ships a `screencapture` command).
+
 ## Commands
 
 ```bash
@@ -25,6 +28,10 @@ xvfb-run -n 301 pytest -q tests                       # several runs in parallel
 Needs `libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1` (+ `libxcb-cursor0` for a real X11 session).
 Tests are isolated by `tests/conftest.py` (own HOME / XDG dirs / QSettings): never write to real user state.
 Don't claim a push is good unless the test run actually passed (a pipe into `tail` hides failures).
+
+README screenshots (`docs/screenshots/*.png`) come from the real windows with made-up sample captures:
+`xvfb-run -a -s "-screen 0 1700x1100x24" env PYTHONPATH=. python docs/make_screenshots.py`. Regenerate them (and keep
+the README's feature descriptions in step) when the UI changes.
 
 ## Releasing
 
