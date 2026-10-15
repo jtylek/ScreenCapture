@@ -58,8 +58,8 @@ Actions and attaches them to a release.
 1. Start ScreenCapture. It lives in the system tray and opens the **Library** window.
 2. Press your capture hotkey (default **Ctrl+Shift+Print**), or click **Capture region** in the Library.
 3. Drag a rectangle over what you want, or just click a window.
-4. The capture is saved to the library and opens in the **editor**: add arrows, boxes, text, blur, crop.
-5. **Copy** it to the clipboard (Ctrl+Shift+C) to paste it somewhere, or **Save** it back to the library (Ctrl+S).
+4. The capture is saved to the library, put on the clipboard right away (paste it anywhere with Ctrl+V), and opens in the **editor**: add arrows, boxes, text, blur, crop.
+5. After annotating, **Copy** it to the clipboard again (Ctrl+Shift+C) to paste the edited version, or **Save** it back to the library (Ctrl+S).
 
 ## Capturing
 

@@ -147,6 +147,7 @@ class ScreenCapture(QObject):
     def _on_captured(self, image: QImage):
         self._overlay = None
         self._restore_own_windows()
+        QGuiApplication.clipboard().setImage(image)  # ready to paste straight away
         self.open_editor(self.library.add(image))
 
     # editor ---------------------------------------------------------------------------------
