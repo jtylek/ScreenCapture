@@ -240,6 +240,33 @@ def _actual(p, fg, bg):  # "1:1"
     p.drawText(QRectF(0, 5, 24, 14), Qt.AlignCenter, "1:1")
 
 
+def _resize(p, fg, bg):  # a picture with a diagonal double arrow: scale the image
+    p.drawRoundedRect(QRectF(3.5, 3.5, 17, 17), 2, 2)
+    _line(p, 8.5, 15.5, 15.5, 8.5)
+    p.drawPolyline(_poly(8.5, 11.5, 8.5, 15.5, 12.5, 15.5))
+    p.drawPolyline(_poly(11.5, 8.5, 15.5, 8.5, 15.5, 12.5))
+
+
+def _canvas(p, fg, bg):  # the image sits inside a bigger dashed canvas
+    q = QPen(fg, 1.6, Qt.DashLine, Qt.RoundCap)
+    p.save()
+    p.setPen(q)
+    p.drawRect(QRectF(3, 3, 18, 18))
+    p.restore()
+    p.setBrush(fg)
+    p.setPen(Qt.NoPen)
+    p.drawRoundedRect(QRectF(8, 8, 8, 8), 1, 1)
+
+
+def _info(p, fg, bg):
+    p.drawEllipse(QRectF(3, 3, 18, 18))
+    p.setBrush(fg)
+    p.setPen(Qt.NoPen)
+    p.drawEllipse(QPointF(12, 7.8), 1.25, 1.25)
+    p.setPen(QPen(fg, 2, Qt.SolidLine, Qt.RoundCap))
+    _line(p, 12, 11, 12, 16.5)
+
+
 def _sun(p, fg, bg):
     import math
 
@@ -265,7 +292,7 @@ _DRAW = {
     "text": _text, "highlight": _highlight, "pixelate": _pixelate, "step": _step,
     "crop": _crop, "cutv": _cutv, "cuth": _cuth, "apply": _apply, "undo": _undo, "redo": _redo,
     "copy": _copy, "save": _save, "saveas": _saveas, "capture": _capture, "screen": _screen,
-    "edit": _edit, "settings": _settings, "zoomin": _zoomin, "zoomout": _zoomout, "fit": _fit, "actual": _actual, "bold": _bold, "italic": _italic, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
+    "edit": _edit, "settings": _settings, "resize": _resize, "canvas": _canvas, "info": _info, "zoomin": _zoomin, "zoomout": _zoomout, "fit": _fit, "actual": _actual, "bold": _bold, "italic": _italic, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
 }
 NAMES = tuple(_DRAW)
 _SIZE = 96  # drawn large, scaled down smoothly by Qt for any toolbar size / DPI

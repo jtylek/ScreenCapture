@@ -47,6 +47,7 @@ from .items import (
 )
 from . import icons, winutil
 from .library import Library
+from .resize_dialogs import CanvasSizeDialog, ResizeImageDialog
 
 # key, tooltip, status-bar hint
 TOOLS = [
@@ -146,6 +147,67 @@ class CropCommand(QUndoCommand):
         self.scene.set_base(self.old_pixmap)
         for i in self.scene.annotations():
             i.moveBy(self.rect.x(), self.rect.y())
+
+
+class ResizeImageCommand(QUndoCommand):
+    """Scales the screenshot to a new size. Annotations follow: their positions scale with the image on each axis,
+    their shapes / text / pen widths uniformly (so circles stay round and text is not squashed)."""
+
+    def __init__(self, scene: "CanvasScene", new_w: int, new_h: int):
+        super().__init__("Resize image")
+        self.scene, self.new_w, self.new_h = scene, new_w, new_h
+        self.old_pixmap = None
+        self.saved = []
+
+    def redo(self):
+        pm = self.scene.base_item.pixmap()
+        self.old_pixmap = pm
+        fx, fy = self.new_w / pm.width(), self.new_h / pm.height()
+        uniform = (fx * fy) ** 0.5
+        items = self.scene.annotations()
+        self.saved = [(it, it.scale(), it.pos()) for it in items]
+        for it in items:
+            before = it.sceneBoundingRect().center()
+            it.setScale(it.scale() * uniform)
+            after = it.sceneBoundingRect().center()
+            it.moveBy(before.x() * fx - after.x(), before.y() * fy - after.y())
+        self.scene.set_base(pm.scaled(self.new_w, self.new_h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+
+    def undo(self):
+        self.scene.set_base(self.old_pixmap)
+        for it, scale, pos in self.saved:
+            it.setScale(scale)
+            it.setPos(pos)
+
+
+class CanvasSizeCommand(QUndoCommand):
+    """New canvas size: the image stays where the anchor says, new area gets the fill color, anything outside is cut."""
+
+    def __init__(self, scene: "CanvasScene", new_w: int, new_h: int, anchor: tuple, color: QColor):
+        super().__init__("Canvas size")
+        self.scene, self.new_w, self.new_h, self.anchor, self.color = scene, new_w, new_h, anchor, QColor(color)
+        self.old_pixmap = None
+        self.ox = self.oy = 0
+
+    def redo(self):
+        pm = self.scene.base_item.pixmap()
+        self.old_pixmap = pm
+        ax, ay = self.anchor
+        dw, dh = self.new_w - pm.width(), self.new_h - pm.height()
+        self.ox, self.oy = (0, dw // 2, dw)[ax], (0, dh // 2, dh)[ay]
+        new = QPixmap(self.new_w, self.new_h)
+        new.fill(self.color)
+        p = QPainter(new)
+        p.drawPixmap(self.ox, self.oy, pm)
+        p.end()
+        for it in self.scene.annotations():
+            it.moveBy(self.ox, self.oy)
+        self.scene.set_base(new)
+
+    def undo(self):
+        self.scene.set_base(self.old_pixmap)
+        for it in self.scene.annotations():
+            it.moveBy(-self.ox, -self.oy)
 
 
 class FontCommand(QUndoCommand):
@@ -692,6 +754,10 @@ class EditorWindow(QMainWindow):
             if key in TOOL_GROUPS_END:
                 tb.addSeparator()
 
+        tb.addSeparator()
+        self._act(tb, "resize", "Resize image… (Ctrl+R)", "Ctrl+R", self.resize_image)
+        self._act(tb, "canvas", "Canvas size… (Ctrl+Shift+R)", "Ctrl+Shift+R", self.resize_canvas)
+
         # zoom: buttons, live percentage, shortcuts (Ctrl+wheel and Space / middle-button panning work on the canvas)
         tb.addSeparator()
         zout = self._act(tb, "zoomout", "Zoom out (Ctrl+−)", None, lambda: self.canvas.zoom_by(1 / 1.25))
@@ -769,6 +835,23 @@ class EditorWindow(QMainWindow):
         self._act(tb2, "copy", "Copy image to clipboard (Ctrl+Shift+C)", "Ctrl+Shift+C", self.copy_to_clipboard)
         self._act(tb2, "save", "Save to library (Ctrl+S)", QKeySequence.Save, self.save)
         self._act(tb2, "saveas", "Save as… (Ctrl+Shift+S)", QKeySequence.SaveAs, self.save_as)
+
+    def resize_image(self):
+        r = self.scene.sceneRect()
+        dlg = ResizeImageDialog(int(r.width()), int(r.height()), self)
+        if dlg.exec():
+            w, h = dlg.size()
+            self.stack.push(ResizeImageCommand(self.scene, w, h))
+            self.statusBar().showMessage(f"Image resized to {w} × {h} px", 4000)
+
+    def resize_canvas(self):
+        r = self.scene.sceneRect()
+        dlg = CanvasSizeDialog(int(r.width()), int(r.height()), getattr(self, "_canvas_fill", QColor("#ffffff")), self)
+        if dlg.exec():
+            w, h, anchor, color = dlg.values()
+            self._canvas_fill = color
+            self.stack.push(CanvasSizeCommand(self.scene, w, h, anchor, color))
+            self.statusBar().showMessage(f"Canvas is now {w} × {h} px", 4000)
 
     def _style_changed(self, **kw):
         self.canvas.set_text_style(**kw)

@@ -1,7 +1,7 @@
 # ScreenCapture
 
-A simple screen capture tool for Windows and Linux. Capture a region or a window, add annotations, crop,
-and keep your screenshots in a library. Output is flattened PNG.
+A simple, free screen capture tool for Windows and Linux. Capture a region or a window, add annotations, crop,
+resize, and keep your screenshots in a library. Output is flattened PNG. MIT licensed.
 
 ![The library of captures](docs/screenshots/library.png)
 
@@ -11,7 +11,7 @@ and keep your screenshots in a library. Output is flattened PNG.
 
 **Contents:** [Install](#install) · [Quick start](#quick-start) · [Capturing](#capturing) · [The editor](#the-editor) ·
 [The library](#the-library) · [Settings](#settings) · [Tray icon](#tray-icon) · [Command line](#command-line) ·
-[Where things are stored](#where-things-are-stored) · [Troubleshooting](#troubleshooting) · [Development](#development)
+[Where things are stored](#where-things-are-stored) · [About and licence](#about-and-licence) · [Troubleshooting](#troubleshooting) · [Development](#development)
 
 **Supported:** Windows 10/11 and Linux with an X11 session (Linux Mint, Ubuntu, …). Not supported yet: Wayland sessions
 and macOS (see [Development](#development)).
@@ -83,7 +83,7 @@ freezes and dims, and the app's own windows get out of the way.
 
 ## The editor
 
-The top row holds the tools and the zoom, the second row the style, edit and save buttons. Hover any button for its name.
+The top row holds the tools, resize and zoom, the second row the style, edit and save buttons. Hover any button for its name.
 
 ### Drawing tools
 
@@ -122,6 +122,19 @@ Style controls (second row), applied to what you draw next:
   remove boring parts from the middle of a long capture. Annotations inside the removed strip are deleted, the ones
   beyond it move over. Undo brings everything back.
 
+### Resize image and canvas size
+
+- **Resize image** (Ctrl+R) scales the whole picture to a new size, in pixels or in percent. With *Keep aspect ratio* on
+  (the default) changing the width changes the height too. Annotations are scaled together with the picture: their
+  positions follow it, and rectangles, text, arrows and step circles keep their shape. If you turn the aspect ratio lock
+  off and squash the picture, the annotations move with it but are not distorted.
+- **Canvas size** (Ctrl+Shift+R) changes the size of the picture's *surface* without scaling the picture. Make it bigger to
+  add empty space around the image (for example room for notes or arrows), or smaller to cut the edges off. Choose where
+  the current image stays in the new canvas with the 3×3 position buttons, and the color of the added area. Annotations
+  move with the image.
+- Both open a small dialog with the current size, show the result before you press OK, and can be undone. Sizes are limited
+  to 20 000 pixels per side and 120 megapixels in total.
+
 ### Zoom and pan
 
 - Buttons next to the tools: **zoom out**, the current **percentage**, **zoom in**, **fit** (whole image in the window) and
@@ -153,6 +166,7 @@ captures and removes older ones.
 - Right-click a thumbnail for *Open in editor*, *Copy to clipboard* and *Delete*.
 - **Open folder** shows the library folder in your file manager, so you can drag the PNG files into an email or a chat.
 - **Capture region** and **Capture screen** start a capture from the library window.
+- **About** shows the version, the licence and the project page (see below).
 - The **sun / moon** button switches between light and dark mode. The status bar shows the capture count and your hotkey.
 
 ## Settings
@@ -203,6 +217,14 @@ launchers should call.
 
 The library's **Open folder** button opens the captures folder. Settings are kept in the usual per-user place (the registry
 on Windows, `~/.config/ScreenCapture/` on Linux).
+
+## About and licence
+
+ScreenCapture is **free software** by **Janusz Tylek**, released under the **[MIT license](LICENSE)**: you may use, copy,
+modify and share it, also commercially, as long as the licence text stays with it. **Library → About** shows the version
+and this information.
+
+Updates, help and bug reports: **https://github.com/jtylek/ScreenCapture**
 
 ## Troubleshooting
 

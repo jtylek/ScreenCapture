@@ -4,9 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "screencapture"
-version = "0.5.0"
+version = "0.6.0"
 description = "Simple screen capture tool for Windows and Linux with annotations and a library of screenshots."
 readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Janusz Tylek"}]
 requires-python = ">=3.9"
 dependencies = [
     # PySide6 6.12.0 over-releases None on every void call (e.g. QPainter.setPen) and aborts Python < 3.12
@@ -15,6 +17,10 @@ dependencies = [
     "PySide6-Essentials>=6.5; python_version >= '3.12'",
     "python-xlib>=0.33; sys_platform == 'linux'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jtylek/ScreenCapture"
+Issues = "https://github.com/jtylek/ScreenCapture/issues"
 
 [project.optional-dependencies]
 dev = ["pytest"]

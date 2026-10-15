@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import icons, theme, winutil
+from . import about, icons, theme, winutil
 from PySide6.QtCore import QObject, QSize, Qt, QStandardPaths, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QImage, QKeySequence, QPixmap
 from PySide6.QtWidgets import QListView, QListWidget, QListWidgetItem, QApplication, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy, QToolBar, QWidget
@@ -128,6 +128,7 @@ class LibraryWindow(QMainWindow):
         theme.notifier.changed.connect(self._sync_theme_action)
         self._sync_theme_action()
         icons.tag(tb.addAction("Settings", self.settingsRequested.emit), "settings")
+        icons.tag(tb.addAction("About", lambda: about.show_about(self)), "info")
 
         self.setWindowIcon(icons.app_icon())
         self.hotkey_label = QLabel()

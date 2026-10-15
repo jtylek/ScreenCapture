@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPen
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from . import diagnostics, icons, theme
+from . import about, diagnostics, icons, theme
 from .capture import CaptureSession, grab_current_screen, grab_screens
 from .editor import EditorWindow
 from .hotkey import HotkeyManager
@@ -96,6 +96,7 @@ class ScreenCapture(QObject):
         m.addSeparator()
         icons.tag(m.addAction("Library", self.show_library), "folder")
         icons.tag(m.addAction("Settings…", self.open_settings), "settings")
+        icons.tag(m.addAction("About", lambda: about.show_about(self.library_window)), "info")
         m.addSeparator()
         m.addAction("Quit", QApplication.quit)
         t.setContextMenu(m)

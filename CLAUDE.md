@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Simple screen capture tool for Windows and Linux (X11) built with Python + PySide6 (Qt 6): capture a region or
+Simple, free (MIT, by Janusz Tylek; see LICENSE and `__init__.py`) screen capture tool for Windows and Linux (X11) built with Python + PySide6 (Qt 6): capture a region or
 window, annotate, crop / cut out, keep a library of screenshots. Output is flattened PNG. README.md is the user
 documentation; keep it accurate when behaviour changes, and don't mention other products in it.
 
@@ -9,7 +9,7 @@ documentation; keep it accurate when behaviour changes, and don't mention other 
 `screencapture/`: `app.py` (tray app, single-instance control via `--capture` etc.), `capture.py` (per-monitor capture overlays),
 `windows.py` (window rectangles: X11 / Win32), `editor.py` + `items.py` (annotation editor, undo commands),
 `library.py` (library storage + window), `hotkey.py` (global hotkey: XGrabKey / RegisterHotKey),
-`autostart.py`, `theme.py`, `icons.py`, `settings_dialog.py`, `winutil.py` (window placement), `diagnostics.py` (log, runtime check). `packaging/` (Windows installer, launcher, icons),
+`autostart.py`, `theme.py`, `icons.py`, `settings_dialog.py`, `winutil.py` (window placement), `resize_dialogs.py` (resize image / canvas size dialogs), `about.py`, `diagnostics.py` (log, runtime check). `packaging/` (Windows installer, launcher, icons),
 `install.sh` / `uninstall.sh` (Linux), `.github/workflows/release.yml`.
 
 Supported platforms: Windows 10/11 and Linux/X11. NOT supported: Wayland, macOS (no window enumeration, global hotkey,

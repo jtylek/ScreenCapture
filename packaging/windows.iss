@@ -8,7 +8,10 @@
 AppId={{7B1D9C3E-4A56-4F0B-9E2D-5C8A1F3B6D70}
 AppName=ScreenCapture
 AppVersion={#AppVersion}
-AppPublisher=Epesi
+AppPublisher=Janusz Tylek
+AppPublisherURL=https://github.com/jtylek/ScreenCapture
+AppSupportURL=https://github.com/jtylek/ScreenCapture
+AppUpdatesURL=https://github.com/jtylek/ScreenCapture/releases
 DefaultDirName={autopf}\ScreenCapture
 DefaultGroupName=ScreenCapture
 UninstallDisplayIcon={app}\ScreenCapture.exe
