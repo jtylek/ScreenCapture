@@ -1,0 +1,43 @@
+name: Prune old releases
+
+# Actions tab > Prune old releases > Run workflow.
+# Deletes all but the newest releases (and their git tags). Dry run by default: it only lists what it would delete.
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many of the newest releases to keep"
+        default: "2"
+      dry_run:
+        description: "true = only list what would be deleted, false = delete"
+        default: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ inputs.keep }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          [[ "$KEEP" =~ ^[0-9]+$ ]] && [ "$KEEP" -ge 1 ] || { echo "keep must be a whole number >= 1"; exit 1; }
+          mapfile -t tags < <(gh release list --repo "$GITHUB_REPOSITORY" --limit 300 --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[].tagName')
+          echo "Releases, newest first: ${tags[*]}"
+          echo "Keeping the newest $KEEP: ${tags[*]:0:KEEP}"
+          old=("${tags[@]:KEEP}")
+          if [ "${#old[@]}" -eq 0 ]; then echo "Nothing to delete."; exit 0; fi
+          for t in "${old[@]}"; do
+            if [ "$DRY" = "true" ]; then
+              echo "DRY RUN - would delete release and tag: $t"
+            else
+              gh release delete "$t" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              echo "deleted release and tag: $t"
+            fi
+          done
