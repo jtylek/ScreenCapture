@@ -191,7 +191,7 @@ Using **PrintScreen** as the hotkey:
 ## Tray icon
 
 The icon in the system tray (menu bar area) opens the Library when clicked. Its menu has **Capture region / window**,
-**Capture full screen**, **Capture full screen in 3 s**, **Library**, **Settings…** and **Quit**. Closing the Library or
+**Capture full screen**, **Capture full screen in 3 s**, **Library**, **Settings…**, **About** and **Quit**. Closing the Library or
 editor windows keeps the app running in the tray (when your desktop has one); use **Quit** to stop it.
 
 ## Command line
