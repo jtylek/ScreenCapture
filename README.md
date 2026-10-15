@@ -7,6 +7,9 @@ and keep your screenshots in a library. Output is flattened PNG.
   with optional 3 s delay from the tray menu. `Esc` / right click cancels.
 - **Annotate** – rectangle, ellipse, arrow, line, text, highlight, blur (pixelate), numbered steps.
   Text has its own font, size, bold and italic controls. Color and line width in the toolbar; full undo/redo.
+- **Zoom** – buttons in the editor toolbar (zoom out / in, *fit* the whole image, *1:1* real pixels) with the current
+  percentage. `Ctrl`+mouse wheel, `Ctrl`+`+` / `-`, `Ctrl`+`0` (fit) and `Ctrl`+`1` (100%) also work. When zoomed in, pan
+  by holding `Space` and dragging, or with the middle mouse button.
 - **Select and delete** – with the Select tool click an item (Ctrl+click adds), drag a box around several, or press
   `Ctrl+A`. Remove them with the `Delete` key, the trash button, or right-click → *Delete*.
 - **Crop** – drag the crop rectangle (edges resize, inside moves), `Enter` / *Apply*.

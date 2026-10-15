@@ -205,6 +205,41 @@ def _italic(p, fg, bg):
     _glyph(p, fg, "I", italic=True, serif=True)
 
 
+def _magnifier(p, plus: bool):
+    p.drawEllipse(QPointF(10.5, 10.5), 6.5, 6.5)
+    p.setPen(QPen(p.pen().color(), 2.4, Qt.SolidLine, Qt.RoundCap))
+    _line(p, 15.4, 15.4, 20.5, 20.5)
+    p.setPen(QPen(p.pen().color(), 1.8, Qt.SolidLine, Qt.RoundCap))
+    _line(p, 7.5, 10.5, 13.5, 10.5)
+    if plus:
+        _line(p, 10.5, 7.5, 10.5, 13.5)
+
+
+def _zoomin(p, fg, bg):
+    _magnifier(p, True)
+
+
+def _zoomout(p, fg, bg):
+    _magnifier(p, False)
+
+
+def _fit(p, fg, bg):  # corner brackets around a smaller picture: "fit the image in the window"
+    for pts in ((3, 8, 3, 3, 8, 3), (16, 3, 21, 3, 21, 8), (3, 16, 3, 21, 8, 21), (21, 16, 21, 21, 16, 21)):
+        p.drawPolyline(_poly(*pts))
+    p.setBrush(fg)
+    p.setPen(Qt.NoPen)
+    p.drawRoundedRect(QRectF(8, 8.5, 8, 7), 1, 1)
+
+
+def _actual(p, fg, bg):  # "1:1"
+    f = QFont("sans-serif")
+    f.setPixelSize(11)
+    f.setBold(True)
+    p.setFont(f)
+    p.setPen(fg)
+    p.drawText(QRectF(0, 5, 24, 14), Qt.AlignCenter, "1:1")
+
+
 def _sun(p, fg, bg):
     import math
 
@@ -230,7 +265,7 @@ _DRAW = {
     "text": _text, "highlight": _highlight, "pixelate": _pixelate, "step": _step,
     "crop": _crop, "cutv": _cutv, "cuth": _cuth, "apply": _apply, "undo": _undo, "redo": _redo,
     "copy": _copy, "save": _save, "saveas": _saveas, "capture": _capture, "screen": _screen,
-    "edit": _edit, "settings": _settings, "bold": _bold, "italic": _italic, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
+    "edit": _edit, "settings": _settings, "zoomin": _zoomin, "zoomout": _zoomout, "fit": _fit, "actual": _actual, "bold": _bold, "italic": _italic, "sun": _sun, "moon": _moon, "folder": _folder, "trash": _trash,
 }
 NAMES = tuple(_DRAW)
 _SIZE = 96  # drawn large, scaled down smoothly by Qt for any toolbar size / DPI

@@ -216,10 +216,16 @@ class CutCommand(QUndoCommand):
 
 class Canvas(QGraphicsView):
     cropActive = Signal(bool)
+    zoomChanged = Signal(float)  # percent: 100 = one image pixel per screen pixel
+
+    MIN_ZOOM, MAX_ZOOM = 5.0, 1600.0
 
     def __init__(self, scene: CanvasScene, stack: QUndoStack):
         super().__init__(scene)
         self.stack = stack
+        self.fit_mode = False  # True: keep the whole image in view when the window is resized
+        self._pan = None  # (mouse start, h scroll, v scroll) while panning
+        self._space = False
         self.tool = "select"
         self.color = QColor("#e53935")
         self.width = 4
@@ -243,8 +249,49 @@ class Canvas(QGraphicsView):
     def set_tool(self, tool: str):
         self.tool = tool
         self.discard_crop()
-        self.viewport().setCursor(Qt.ArrowCursor if tool == "select" else Qt.CrossCursor)
+        self.viewport().setCursor(self._tool_cursor())
         self.setDragMode(QGraphicsView.RubberBandDrag if tool == "select" else QGraphicsView.NoDrag)
+
+    def _tool_cursor(self):
+        return Qt.ArrowCursor if self.tool == "select" else Qt.CrossCursor
+
+    # zoom ----------------------------------------------------------------------------------
+
+    def _dpr(self) -> float:
+        return self.devicePixelRatioF() or 1.0
+
+    def zoom_percent(self) -> float:
+        """100% = one image pixel per physical screen pixel (also on scaled / HiDPI displays)."""
+        return self.transform().m11() * self._dpr() * 100
+
+    def set_zoom_percent(self, pct: float, at_mouse: bool = False, manual: bool = True):
+        pct = min(max(pct, self.MIN_ZOOM), self.MAX_ZOOM)
+        if manual:
+            self.fit_mode = False
+        anchor = QGraphicsView.AnchorUnderMouse if at_mouse else QGraphicsView.AnchorViewCenter
+        self.setTransformationAnchor(anchor)
+        f = (pct / 100 / self._dpr()) / self.transform().m11()
+        self.scale(f, f)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.zoomChanged.emit(self.zoom_percent())
+
+    def zoom_by(self, step: float, at_mouse: bool = False):
+        self.set_zoom_percent(self.zoom_percent() * step, at_mouse)
+
+    def zoom_actual(self):
+        self.set_zoom_percent(100)
+
+    def zoom_fit(self):
+        """Whole image in view; stays that way when the window is resized."""
+        self.fit_mode = True
+        self.fitInView(self.scene().sceneRect(), Qt.KeepAspectRatio)
+        self.zoomChanged.emit(self.zoom_percent())
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self.fit_mode:
+            self.fitInView(self.scene().sceneRect(), Qt.KeepAspectRatio)
+            self.zoomChanged.emit(self.zoom_percent())
 
     def editing_text(self) -> bool:
         f = self.scene().focusItem()
@@ -472,6 +519,12 @@ class Canvas(QGraphicsView):
     # events --------------------------------------------------------------------------------
 
     def mousePressEvent(self, e):
+        # pan: middle button, or Space + left button (the image is bigger than the window when zoomed in)
+        if e.button() == Qt.MiddleButton or (e.button() == Qt.LeftButton and self._space):
+            hb, vb = self.horizontalScrollBar(), self.verticalScrollBar()
+            self._pan = (e.position().toPoint(), hb.value(), vb.value())
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            return
         if e.button() != Qt.LeftButton:
             return super().mousePressEvent(e)
         p = self.mapToScene(e.position().toPoint())
@@ -505,6 +558,12 @@ class Canvas(QGraphicsView):
             self.scene().addItem(self._item)
 
     def mouseMoveEvent(self, e):
+        if self._pan:
+            start, h0, v0 = self._pan
+            d = e.position().toPoint() - start
+            self.horizontalScrollBar().setValue(h0 - d.x())
+            self.verticalScrollBar().setValue(v0 - d.y())
+            return
         p = self.mapToScene(e.position().toPoint())
         if self._crop_drag:
             return self._crop_update(p)
@@ -513,6 +572,10 @@ class Canvas(QGraphicsView):
         super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e):
+        if self._pan:
+            self._pan = None
+            self.viewport().setCursor(Qt.OpenHandCursor if self._space else self._tool_cursor())
+            return
         if self._crop_drag:
             self._crop_drag = None
             r = self._crop.rect()
@@ -542,6 +605,10 @@ class Canvas(QGraphicsView):
             else:
                 super().keyPressEvent(e)
             return
+        if e.key() == Qt.Key_Space and not e.isAutoRepeat():
+            self._space = True
+            self.viewport().setCursor(Qt.OpenHandCursor)
+            return
         if e.key() in (Qt.Key_Delete, Qt.Key_Backspace):
             return self.delete_selected()
         if e.matches(QKeySequence.SelectAll):
@@ -554,10 +621,16 @@ class Canvas(QGraphicsView):
             return
         super().keyPressEvent(e)
 
+    def keyReleaseEvent(self, e):
+        if e.key() == Qt.Key_Space and not e.isAutoRepeat():
+            self._space = False
+            if not self._pan:
+                self.viewport().setCursor(self._tool_cursor())
+        super().keyReleaseEvent(e)
+
     def wheelEvent(self, e):
         if e.modifiers() & Qt.ControlModifier:
-            f = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
-            self.scale(f, f)
+            self.zoom_by(1.15 if e.angleDelta().y() > 0 else 1 / 1.15, at_mouse=True)
         else:
             super().wheelEvent(e)
 
@@ -618,6 +691,21 @@ class EditorWindow(QMainWindow):
                 a.setChecked(True)
             if key in TOOL_GROUPS_END:
                 tb.addSeparator()
+
+        # zoom: buttons, live percentage, shortcuts (Ctrl+wheel and Space / middle-button panning work on the canvas)
+        tb.addSeparator()
+        zout = self._act(tb, "zoomout", "Zoom out (Ctrl+−)", None, lambda: self.canvas.zoom_by(1 / 1.25))
+        zout.setShortcuts([QKeySequence.ZoomOut, QKeySequence("Ctrl+_")])
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setToolTip("Zoom level (100% = real pixels)")
+        self.zoom_label.setAlignment(Qt.AlignCenter)
+        self.zoom_label.setMinimumWidth(56)
+        tb.addWidget(self.zoom_label)
+        zin = self._act(tb, "zoomin", "Zoom in (Ctrl++)", None, lambda: self.canvas.zoom_by(1.25))
+        zin.setShortcuts([QKeySequence.ZoomIn, QKeySequence("Ctrl+=")])
+        self._act(tb, "fit", "Fit the whole image in the window (Ctrl+0)", "Ctrl+0", self.canvas.zoom_fit)
+        self._act(tb, "actual", "Actual size, 100% (Ctrl+1)", "Ctrl+1", self.canvas.zoom_actual)
+        self.canvas.zoomChanged.connect(lambda pct: self.zoom_label.setText(f"{round(pct)}%"))
 
         self.addToolBarBreak()  # second row: style, edit actions, output
         tb2 = QToolBar("Style", self)
@@ -770,9 +858,10 @@ class EditorWindow(QMainWindow):
         r = self.scene.sceneRect()
         vp = self.canvas.viewport().size()
         if r.width() > vp.width() or r.height() > vp.height():
-            self.canvas.fitInView(r, Qt.KeepAspectRatio)
+            self.canvas.zoom_fit()  # too big for the window: show it all (and keep doing so on resize)
         else:
-            self.canvas.resetTransform()
+            self.canvas.set_zoom_percent(100, manual=False)  # small image: real size
+            self.canvas.fit_mode = False
 
     def _update_size(self, *_):
         try:
