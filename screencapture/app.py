@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPen
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from . import about, diagnostics, icons, theme
+from . import about, diagnostics, icons, prefs, theme
 from .capture import CaptureSession, grab_current_screen, grab_screens
 from .editor import EditorWindow
 from .hotkey import HotkeyManager
@@ -35,7 +35,7 @@ class ScreenCapture(QObject):
         self.library_window.captureRequested.connect(self.capture_region)
         self.library_window.fullscreenRequested.connect(lambda: self.capture_fullscreen(0))
         self.library_window.settingsRequested.connect(self.open_settings)
-        self.editors: dict[Path, EditorWindow] = {}
+        self.editors: list[EditorWindow] = []
         self._hidden: list = []
         self._overlay: CaptureSession | None = None
         self.tray = self._make_tray()
@@ -113,7 +113,7 @@ class ScreenCapture(QObject):
     # capture --------------------------------------------------------------------------------
 
     def _hide_own_windows(self):
-        self._hidden = [w for w in [self.library_window, *self.editors.values()] if w.isVisible()]
+        self._hidden = [w for w in [self.library_window, *self.editors] if w.isVisible()]
         for w in self._hidden:
             w.hide()
         QApplication.processEvents()
@@ -147,19 +147,27 @@ class ScreenCapture(QObject):
     def _on_captured(self, image: QImage):
         self._overlay = None
         self._restore_own_windows()
-        QGuiApplication.clipboard().setImage(image)  # ready to paste straight away
-        self.open_editor(self.library.add(image))
+        if prefs.get(prefs.AUTO_CLIPBOARD):
+            QGuiApplication.clipboard().setImage(image)  # ready to paste straight away
+        if prefs.get(prefs.AUTO_SAVE):
+            self.open_editor(self.library.add(image))
+        else:  # not in the library until the user saves it from the editor
+            self._show_editor(EditorWindow(image, self.library, None))
 
     # editor ---------------------------------------------------------------------------------
 
     def open_editor(self, path: Path):
         path = Path(path)
-        if path in self.editors:
-            w = self.editors[path]
-        else:
+        w = next((e for e in self.editors if e.path == path), None)
+        if w is None:
             w = EditorWindow(QImage(str(path)), self.library, path)
-            w.closed.connect(lambda _w, p=path: self.editors.pop(p, None))
-            self.editors[path] = w
+        self._show_editor(w)
+
+    def _show_editor(self, w: EditorWindow):
+        if w not in self.editors:
+            self.editors.append(w)
+            w.closed.connect(lambda _w: self.editors.remove(_w) if _w in self.editors else None)
+            w.libraryRequested.connect(self.show_library)
         w.show()
         w.raise_()
         w.activateWindow()

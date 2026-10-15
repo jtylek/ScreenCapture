@@ -58,8 +58,8 @@ Actions and attaches them to a release.
 1. Start ScreenCapture. It lives in the system tray and opens the **Library** window.
 2. Press your capture hotkey (default **Ctrl+Shift+Print**), or click **Capture region** in the Library.
 3. Drag a rectangle over what you want, or just click a window.
-4. The capture is saved to the library, put on the clipboard right away (paste it anywhere with Ctrl+V), and opens in the **editor**: add arrows, boxes, text, blur, crop.
-5. After annotating, **Copy** it to the clipboard again (Ctrl+Shift+C) to paste the edited version, or **Save** it back to the library (Ctrl+S).
+4. The capture is put on the clipboard right away (paste it anywhere with Ctrl+V) and opens in the **editor**: add arrows, boxes, text, blur, crop. The **Library** button in the editor toolbar opens the library.
+5. After annotating, **Copy** it to the clipboard again (Ctrl+Shift+C) to paste the edited version, and **Save** it to the library (Ctrl+S). Turn on *Automatically save new captures to the Library* in [Settings](#settings) to skip that step.
 
 ## Capturing
 
@@ -176,6 +176,7 @@ Open **Library → Settings** (gear icon). OK saves, Cancel undoes the changes. 
 - **Theme** – follow the system, light or dark.
 - **Icon size** – small, medium (default) or large toolbar icons.
 - **Startup** – start ScreenCapture quietly in the tray when you sign in to Windows / Linux, so the hotkey is always ready.
+- **New captures** – *Automatically add new captures to the clipboard* (on by default) and *Automatically save new captures to the Library* (off by default; otherwise a capture is only in the library once you save it from the editor).
 - **Capture hotkey** – a global shortcut that starts a region / window capture from any application. Click the box and press
   the keys. **Clear** turns the hotkey off, **Default** restores `Ctrl+Shift+Print`. It works on Windows and Linux/X11
   (not Wayland). `Ctrl+Alt+letter` is refused because it is AltGr on many keyboards. If the combination is already taken,

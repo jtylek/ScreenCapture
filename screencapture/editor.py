@@ -714,6 +714,7 @@ def _swatch(color: QColor) -> QIcon:
 
 class EditorWindow(QMainWindow):
     closed = Signal(object)
+    libraryRequested = Signal()
 
     def __init__(self, image: QImage, library: Library, path: Path | None = None):
         super().__init__()
@@ -835,6 +836,8 @@ class EditorWindow(QMainWindow):
         self._act(tb2, "copy", "Copy image to clipboard (Ctrl+Shift+C)", "Ctrl+Shift+C", self.copy_to_clipboard)
         self._act(tb2, "save", "Save to library (Ctrl+S)", QKeySequence.Save, self.save)
         self._act(tb2, "saveas", "Save as… (Ctrl+Shift+S)", QKeySequence.SaveAs, self.save_as)
+        tb2.addSeparator()
+        self._act(tb2, "folder", "Open the library", None, self.libraryRequested.emit)
 
     def resize_image(self):
         r = self.scene.sceneRect()

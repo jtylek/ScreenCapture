@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import autostart, icons, theme
+from . import autostart, icons, prefs, theme
 from .hotkey import DEFAULT, HotkeyManager, parse
 
 
@@ -61,11 +61,18 @@ class SettingsDialog(QDialog):
         self.autostart_box.setEnabled(autostart.supported())
         self.autostart_box.setChecked(autostart.is_enabled())
 
+        self.clip_box = QCheckBox("Automatically add new captures to the clipboard")
+        self.clip_box.setChecked(prefs.get(prefs.AUTO_CLIPBOARD))
+        self.save_box = QCheckBox("Automatically save new captures to the Library")
+        self.save_box.setChecked(prefs.get(prefs.AUTO_SAVE))
+
         form = QFormLayout()
         form.addRow("Theme:", self.theme_box)
         form.addRow("Icon size:", self.size_box)
         form.addRow("Startup:", self.autostart_box)
         form.addRow("Capture hotkey:", row)
+        form.addRow("New captures:", self.clip_box)
+        form.addRow("", self.save_box)
         hint = QLabel(
             "Starts a region / window capture from anywhere. Click the box and press the keys you want; "
             "Clear turns the hotkey off."
@@ -107,6 +114,8 @@ class SettingsDialog(QDialog):
             err = autostart.set_enabled(self.autostart_box.isChecked())
             if err:
                 return self._show(err, True)
+        prefs.set_(prefs.AUTO_CLIPBOARD, self.clip_box.isChecked())
+        prefs.set_(prefs.AUTO_SAVE, self.save_box.isChecked())
         theme.save(self.theme_box.currentData())
         icons.save_size(self.size_box.currentData())
         super().accept()
