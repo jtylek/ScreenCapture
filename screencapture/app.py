@@ -113,6 +113,12 @@ class ScreenCapture(QObject):
     # capture --------------------------------------------------------------------------------
 
     def _hide_own_windows(self):
+        """Get our own windows out of the way of a capture. Not while one of our dialogs (Settings, About, Resize…) is
+        open: then the user is capturing our own UI, so everything stays visible. (Hiding the library window would
+        also hide the dialog that belongs to it, on Windows.)"""
+        if QApplication.activeModalWidget() is not None:
+            self._hidden = []
+            return
         self._hidden = [w for w in [self.library_window, *self.editors] if w.isVisible()]
         for w in self._hidden:
             w.hide()

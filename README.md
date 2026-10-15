@@ -64,7 +64,11 @@ Actions and attaches them to a release.
 ## Capturing
 
 Start a capture with the hotkey, the **Capture region** button, the tray menu, or `screencapture --capture`. The screen
-freezes and dims, and the app's own windows get out of the way.
+freezes and dims, and the app's own windows (Library, editors) get out of the way.
+
+**Capturing ScreenCapture itself** (for example its Settings or About dialog): open the dialog, then press the capture
+hotkey. While one of the app's dialogs is open nothing is hidden, so the dialog is in the picture, and Esc / right-click
+still cancel as usual.
 
 | Do this | Result |
 |---|---|
@@ -79,7 +83,8 @@ freezes and dims, and the app's own windows get out of the way.
 - **Capture full screen** (tray menu or Library → *Capture screen*) takes the whole monitor the mouse is on.
   **Capture full screen in 3 s** waits three seconds first, so you can open a menu or hover a tooltip.
 - Captures are saved at the monitor's real pixel size, also on scaled / high-DPI displays.
-- The new capture is added to the [library](#the-library) and opened in the editor at once.
+- The new capture is copied to the clipboard and opened in the editor at once. It goes into the [library](#the-library) when
+  you save it there, or automatically if you turn on *Automatically save new captures to the Library* in Settings.
 
 ## The editor
 

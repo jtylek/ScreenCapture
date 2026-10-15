@@ -70,9 +70,9 @@ class SettingsDialog(QDialog):
         form.addRow("Theme:", self.theme_box)
         form.addRow("Icon size:", self.size_box)
         form.addRow("Startup:", self.autostart_box)
-        form.addRow("Capture hotkey:", row)
         form.addRow("New captures:", self.clip_box)
         form.addRow("", self.save_box)
+        form.addRow("Capture hotkey:", row)  # last, so the explanation below stays right under it
         hint = QLabel(
             "Starts a region / window capture from anywhere. Click the box and press the keys you want; "
             "Clear turns the hotkey off."

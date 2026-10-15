@@ -65,14 +65,26 @@ def _escape_down() -> bool:
         return False
 
 
+def _right_button_down() -> bool:
+    """Is the right mouse button physically down? Like _escape_down, independent of which window has the focus."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.user32.GetAsyncKeyState(0x02) & 0x8000)  # VK_RBUTTON
+    except Exception:
+        return False
+
+
 class CaptureOverlay(QWidget):
     """One monitor, frozen and dimmed. Drag = region, click = window under the cursor, Esc / right click = cancel."""
 
     captured = Signal(QImage)
     cancelled = Signal()
 
-    def __init__(self, shot: ScreenShot, native_windows: list[QRect]):
-        super().__init__()
+    def __init__(self, shot: ScreenShot, native_windows: list[QRect], parent: QWidget | None = None):
+        super().__init__(parent)
         self._shot = shot
         self._windows = windows_for_screen(shot, native_windows)
         self._press: QPoint | None = None
@@ -80,7 +92,8 @@ class CaptureOverlay(QWidget):
         self._sel: QRect | None = None
         self._hover: QRect | None = None
         self._done = False
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
+        # Qt.Window: stays a separate top-level window even when it has a parent (the other monitors' overlays do)
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
         self.setCursor(Qt.CrossCursor)
         self.setMouseTracking(True)
         if shot.screen is not None:
@@ -169,7 +182,13 @@ class CaptureSession(QObject):
 
     def __init__(self, shots: list[ScreenShot], native_windows: list[QRect]):
         super().__init__()
-        self.overlays = [CaptureOverlay(s, native_windows) for s in shots]
+        # While one of our own modal dialogs (Settings, About, Resize…) is open, Qt drops all input to every other
+        # window of the app, so plain overlays were frozen: no click, no Esc. The first overlay is therefore itself
+        # application-modal (the newest modal window wins and gets the input), and the overlays of the other monitors
+        # are its child windows, which a modal window never blocks.
+        root = CaptureOverlay(shots[0], native_windows)
+        root.setWindowModality(Qt.ApplicationModal)
+        self.overlays = [root] + [CaptureOverlay(s, native_windows, parent=root) for s in shots[1:]]
         self._done = False
         for o in self.overlays:
             o.captured.connect(self._on_captured)
@@ -185,6 +204,7 @@ class CaptureSession(QObject):
         self._heartbeat.timeout.connect(self._tick)
         self._last_tick = time.monotonic()
         self._esc_was_down = _escape_down()  # ignore an Esc that is already held when the capture starts
+        self._right_was_down = _right_button_down()  # (and a right button that is already held)
 
     def start(self):
         for o in self.overlays:
@@ -230,6 +250,10 @@ class CaptureSession(QObject):
         if down and not self._esc_was_down:
             return self._on_cancelled()
         self._esc_was_down = down
+        right = _right_button_down()  # same for the right mouse button
+        if right and not self._right_was_down:
+            return self._on_cancelled()
+        self._right_was_down = right
 
     def _stop_failsafes(self):
         self._idle.stop()

@@ -68,6 +68,12 @@ The release asset names are fixed on purpose: the README links to `releases/late
   rectangles (Win32 / X11) are physical pixels; Qt keeps each monitor's top-left at its native position and only scales
   its size, so `windows_for_screen` maps them per monitor. Never use `x / dpr` from the desktop origin. Tests cover a
   133% monitor to the left of a 100% primary.
+- Modal dialogs block the capture overlays: while one of our dialogs (Settings, About, Resize…) is open Qt drops ALL input to
+  every other window of the app, so pressing the capture hotkey with Settings open froze the overlays (no click, Esc did
+  nothing). `CaptureSession` makes the first overlay application-modal (newest modal window wins) and the other monitors'
+  overlays its child windows (never blocked); `ScreenCapture._hide_own_windows` hides nothing while a modal dialog is open
+  (hiding the library window also hides its dialogs on Windows), so our own dialogs can be captured. `QTest.mouseClick(widget)`
+  bypasses the blocking: send test input to `widget.windowHandle()` (see `tests/test_capture_modal.py`).
 - A busy X server can drop a brand-new connection: X11 code retries.
 - UI strings are plain English; there is no translation system.
 - Keep dependencies minimal (`PySide6-Essentials`, `python-xlib` on Linux only).
